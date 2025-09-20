@@ -1,4 +1,12 @@
-# Bsonic
+<p align="center">
+  <img src="assets/logo.png" alt="bsonic logo" width="200"/>
+</p>
+
+<h1 align="center">BSONIC</h1>
+
+<p align="center">
+  Parse <b>Lucene-style query syntax</b> into <b>BSON filters</b> for MongoDB — fast, simple, and developer-friendly.
+</p>
 
 [![CI](https://github.com/kyle-williams-1/bsonic/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-williams-1/bsonic/actions/workflows/ci.yml)
 [![Integration Tests](https://github.com/kyle-williams-1/bsonic/actions/workflows/integration.yml/badge.svg)](https://github.com/kyle-williams-1/bsonic/actions/workflows/integration.yml)
