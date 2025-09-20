@@ -103,13 +103,23 @@ query, _ := parser.Parse("name:john AND NOT age:25")
 ```
 bsonic/
 ├── bsonic.go          # Main library implementation
-├── parser.go          # Query parsing logic
-├── operators.go       # Logical operators (AND, OR, NOT)
-├── types.go          # Type definitions and utilities
-├── go.mod            # Go module definition
-├── README.md         # This file
-└── examples/         # Usage examples
-    └── main.go
+├── bsonic_test.go     # Unit tests
+├── go.mod             # Go module definition
+├── go.sum             # Go module checksums
+├── README.md          # This file
+├── CHANGELOG.md       # Version history
+├── LICENSE            # Apache 2.0 license
+├── Makefile           # Build and test commands
+├── docker-compose.yml # MongoDB integration testing
+├── examples/          # Usage examples
+│   └── main.go
+├── integration/       # Integration tests
+│   ├── integration_test.go
+│   ├── README.md
+│   └── init/
+│       └── 01-seed-data.js
+└── scripts/           # Helper scripts
+    └── test-integration.sh
 ```
 
 ### Contributing
@@ -122,9 +132,29 @@ bsonic/
 
 ### Testing
 
+#### Unit Tests
 ```bash
 go test ./...
 ```
+
+#### Integration Tests
+Integration tests run against a real MongoDB database using Docker:
+
+```bash
+# Start MongoDB container
+make docker-up
+
+# Run integration tests
+make test-integration
+
+# Stop MongoDB container
+make docker-down
+```
+
+For more detailed integration testing options, see the [Integration Testing Guide](integration/README.md).
+
+#### Dependencies
+See [DEPENDENCIES.md](DEPENDENCIES.md) for a complete list of required and optional dependencies.
 
 ### Roadmap
 
