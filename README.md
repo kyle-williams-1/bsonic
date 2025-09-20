@@ -226,11 +226,10 @@ query, _ := parser.Parse("name:john")
 
 ## Integration Testing
 
-This library includes comprehensive integration tests that run against a real MongoDB instance. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md) for details on how to run integration tests locally.
+This library includes comprehensive integration tests that run against a real MongoDB instance.
 
-- [Integration Testing Guide](INTEGRATION_TESTING.md) - Setup and run integration tests
-- [Integration Troubleshooting](INTEGRATION_TROUBLESHOOTING.md) - Common issues and solutions
-- [Detailed Integration Guide](integration/README.md) - Advanced integration testing
+- [Integration Testing Guide](integration/README.md) - Complete setup and testing guide
+- [Integration Troubleshooting](integration/INTEGRATION_TROUBLESHOOTING.md) - Common issues and solutions
 
 ## Examples
 
