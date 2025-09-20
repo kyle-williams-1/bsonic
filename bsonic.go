@@ -133,9 +133,7 @@ func (p *Parser) extractNotConditions(query string) (string, bson.M, error) {
 
 	// Clean up any remaining AND operators at the end
 	cleanedQuery = strings.TrimSpace(cleanedQuery)
-	if strings.HasSuffix(cleanedQuery, " AND") {
-		cleanedQuery = strings.TrimSuffix(cleanedQuery, " AND")
-	}
+	cleanedQuery = strings.TrimSuffix(cleanedQuery, " AND")
 
 	return cleanedQuery, notConditions, nil
 }
@@ -245,20 +243,6 @@ func (p *Parser) extractAndConditions(query string) (bson.M, error) {
 	}
 
 	return result, nil
-}
-
-// splitByOperators splits a query by AND/OR operators (legacy method, kept for compatibility)
-func (p *Parser) splitByOperators(query string) []string {
-	// Simple implementation - split by AND/OR (case insensitive)
-	re := regexp.MustCompile(`\s+(AND|OR)\s+`)
-	parts := re.Split(query, -1)
-
-	// Clean up whitespace
-	for i, part := range parts {
-		parts[i] = strings.TrimSpace(part)
-	}
-
-	return parts
 }
 
 // parseFieldValue parses a field:value pair

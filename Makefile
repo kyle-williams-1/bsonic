@@ -34,3 +34,14 @@ lint:
 
 # Run all checks
 check: fmt test lint
+
+# Run local pre-commit checks (same as CI)
+pre-commit:
+	./scripts/test-local.sh
+
+# Run security scan
+security:
+	gosec ./...
+
+# Run all checks including security
+check-all: check security
