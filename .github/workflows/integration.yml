@@ -10,21 +10,6 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
-    
-    services:
-      mongodb:
-        image: mongo:7.0
-        env:
-          MONGO_INITDB_ROOT_USERNAME: admin
-          MONGO_INITDB_ROOT_PASSWORD: password
-          MONGO_INITDB_DATABASE: bsonic_test
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -48,16 +33,20 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
-    - name: Wait for MongoDB
+    - name: Start MongoDB with Docker Compose
       run: |
-        timeout 60s bash -c 'until mongosh --host localhost:27017 --username admin --password password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 2; done'
-
-    - name: Seed test data
-      run: |
-        # Copy seed data to container
-        docker cp integration/init/01-seed-data.js $(docker ps -q --filter "ancestor=mongo:7.0"):/tmp/seed-data.js
-        # Execute seed script
-        mongosh --host localhost:27017 --username admin --password password --authenticationDatabase admin --file /tmp/seed-data.js
+        # Start MongoDB with seed data
+        docker-compose up -d
+        
+        # Wait for MongoDB to be ready
+        echo "Waiting for MongoDB to be ready..."
+        timeout 60s bash -c 'until docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 2; done'
+        
+        # Verify MongoDB is running
+        docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")"
+        
+        # Check if data was seeded
+        docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin bsonic_test --eval "db.users.countDocuments()"
 
     - name: Run integration tests
       run: go test -tags=integration -v ./integration/...
@@ -80,12 +69,8 @@ jobs:
           integration_coverage.out
           integration_coverage.html
 
-    - name: Test MongoDB connection
-      run: |
-        mongosh --host localhost:27017 --username admin --password password --authenticationDatabase admin bsonic_test --eval "db.users.countDocuments()"
-
     - name: Cleanup
       if: always()
       run: |
-        # Stop any running containers
-        docker stop $(docker ps -q) 2>/dev/null || true
+        # Stop and remove containers
+        docker-compose down -v
