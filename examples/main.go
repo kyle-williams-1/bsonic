@@ -22,6 +22,16 @@ func main() {
 		"name:jo* OR name:ja* AND NOT age:18",
 		"user.profile.email:john@example.com",
 		"tags:mongodb",
+		// Date query examples
+		"created_at:2023-01-15",
+		"created_at:2023-01-15T10:30:00Z",
+		"created_at:[2023-01-01 TO 2023-12-31]",
+		"created_at:>2024-01-01",
+		"created_at:<2023-12-31",
+		"created_at:>=2024-01-01",
+		"created_at:<=2023-12-31",
+		"created_at:[2023-01-01 TO 2023-12-31] AND status:active",
+		"created_at:>2024-01-01 OR updated_at:<2023-01-01",
 	}
 
 	fmt.Println("Bsonic - Lucene-style MongoDB BSON Parser")

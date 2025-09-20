@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package integration
 
@@ -88,12 +87,12 @@ func TestBasicQueries(t *testing.T) {
 		{
 			name:     "active status match",
 			query:    "active:true",
-			expected: 0, // BSON library treats all values as strings, so "true" != true
+			expected: 4, // Now properly handles boolean values
 		},
 		{
 			name:     "age match",
 			query:    "age:30",
-			expected: 0, // BSON library treats all values as strings, so "30" != 30
+			expected: 1, // Now properly handles numeric values
 		},
 	}
 
@@ -263,7 +262,7 @@ func TestLogicalOperators(t *testing.T) {
 		{
 			name:     "AND operation - active admin",
 			query:    "active:true AND role:admin",
-			expected: 0, // BSON library treats all values as strings, so "true" != true
+			expected: 2, // John Doe and Charlie Wilson (both active and admin)
 		},
 		{
 			name:     "OR operation - John or Jane",
@@ -278,7 +277,7 @@ func TestLogicalOperators(t *testing.T) {
 		{
 			name:     "Complex - active and not admin",
 			query:    "active:true AND NOT role:admin",
-			expected: 0, // BSON library treats all values as strings, so "true" != true
+			expected: 2, // Jane Smith and Alice Brown (active but not admin)
 		},
 	}
 
@@ -318,12 +317,12 @@ func TestProductQueries(t *testing.T) {
 		{
 			name:     "in stock products",
 			query:    "in_stock:true",
-			expected: 0, // BSON library treats all values as strings, so "true" != true
+			expected: 2, // Now properly handles boolean values
 		},
 		{
 			name:     "price range (exact match)",
 			query:    "price:99.99",
-			expected: 0, // BSON library treats all values as strings, so "99.99" != 99.99
+			expected: 1, // Now properly handles numeric values
 		},
 		{
 			name:     "tag contains 'gaming'",
@@ -374,6 +373,111 @@ func TestComplexQueries(t *testing.T) {
 			name:     "payment method match",
 			query:    "payment_method:credit_card",
 			expected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
+// TestDateQueries tests date-based queries
+func TestDateQueries(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "exact date match (using range for same day)",
+			query:    "created_at:[2023-01-15 TO 2023-01-16]",
+			expected: 1, // John Doe (created 2023-01-15T10:30:00Z)
+		},
+		{
+			name:     "date range - 2023",
+			query:    "created_at:[2023-01-01 TO 2023-12-31]",
+			expected: 3, // John (2023-01-15), Jane (2023-02-20), Alice (2023-06-05) - Charlie is 2022
+		},
+		{
+			name:     "date greater than 2023-06-01",
+			query:    "created_at:>2023-06-01",
+			expected: 1, // Alice (created 2023-06-05)
+		},
+		{
+			name:     "date less than 2023-02-01",
+			query:    "created_at:<2023-02-01",
+			expected: 3, // Charlie (2022-08-30), Bob (2022-11-10), John (2023-01-15)
+		},
+		{
+			name:     "date greater than or equal 2023-02-01",
+			query:    "created_at:>=2023-02-01",
+			expected: 2, // Jane (2023-02-20), Alice (2023-06-05)
+		},
+		{
+			name:     "date less than or equal 2023-02-01",
+			query:    "created_at:<=2023-02-01",
+			expected: 3, // Charlie (2022-08-30), Bob (2022-11-10), John (2023-01-15)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
+// TestComplexDateQueries tests complex date queries with other conditions
+func TestComplexDateQueries(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "date range with role filter",
+			query:    "created_at:[2023-01-01 TO 2023-12-31] AND role:admin",
+			expected: 1, // Only John (Charlie is 2022)
+		},
+		{
+			name:     "date range with OR condition",
+			query:    "created_at:>2023-06-01 OR created_at:<2023-01-01",
+			expected: 3, // Alice (after 2023-06-01), Charlie (2022-08-30), Bob (2022-11-10)
+		},
+		{
+			name:     "date range with name filter",
+			query:    "created_at:[2023-01-01 TO 2023-12-31] AND name:John*",
+			expected: 1, // John Doe
 		},
 	}
 

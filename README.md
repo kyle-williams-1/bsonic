@@ -1,7 +1,7 @@
 # Bsonic
 
 [![CI](https://github.com/kyle-williams-1/bsonic/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-williams-1/bsonic/actions/workflows/ci.yml)
-[![Test](https://github.com/kyle-williams-1/bsonic/actions/workflows/test.yml/badge.svg)](https://github.com/kyle-williams-1/bsonic/actions/workflows/test.yml)
+[![Integration Tests](https://github.com/kyle-williams-1/bsonic/actions/workflows/integration.yml/badge.svg)](https://github.com/kyle-williams-1/bsonic/actions/workflows/integration.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kyle-williams-1/bsonic)](https://goreportcard.com/report/github.com/kyle-williams-1/bsonic)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -14,6 +14,8 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Dot notation**: Query nested data structures using dot notation
 - **Array search**: Search within array fields
 - **Logical operators**: Support for AND, OR, and NOT operations
+- **Date queries**: Full support for date range and comparison queries
+- **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
 
 ## Installation
@@ -48,133 +50,146 @@ func main() {
 }
 ```
 
-## Usage Examples
+## Query Syntax
 
 ### Basic Field Matching
 
 ```go
-parser := bsonic.New()
-
 // Exact match
 query, _ := parser.Parse("name:john")
-// Generates: bson.M{"name": "john"}
+// BSON: map[name:john]
 
-// Wildcard search
+// Wildcard patterns
 query, _ := parser.Parse("name:jo*")
-// Generates: bson.M{"name": bson.M{"$regex": "jo.*", "$options": "i"}}
+// BSON: map[name:map[$regex:jo.* $options:i]]
+
+// Quoted values with spaces
+query, _ := parser.Parse(`name:"john doe"`)
+// BSON: map[name:john doe]
 ```
 
-### Nested Fields (Dot Notation)
+### Dot Notation for Nested Fields
 
 ```go
-// Query nested fields
 query, _ := parser.Parse("user.profile.email:john@example.com")
-// Generates: bson.M{"user.profile.email": "john@example.com"}
+// BSON: map[user.profile.email:john@example.com]
 ```
 
-### Array Search
+### Array Field Queries
 
 ```go
-// Search in arrays
 query, _ := parser.Parse("tags:mongodb")
-// Generates: bson.M{"tags": "mongodb"} (uses $in for array fields)
+// BSON: map[tags:mongodb]
 ```
 
 ### Logical Operators
 
 ```go
-// AND operations
+// AND operation
 query, _ := parser.Parse("name:john AND age:25")
-// Generates: bson.M{"name": "john", "age": 25}
+// BSON: map[age:25 name:john]
 
-// OR operations (coming soon)
+// OR operation
 query, _ := parser.Parse("name:john OR name:jane")
-// Will generate: bson.M{"$or": [{"name": "john"}, {"name": "jane"}]}
+// BSON: map[$or:[map[name:john] map[name:jane]]]
 
-// NOT operations (coming soon)
+// NOT operation
 query, _ := parser.Parse("name:john AND NOT age:25")
-// Will generate: bson.M{"name": "john", "age": bson.M{"$ne": 25}}
+// BSON: map[age:map[$ne:25] name:john]
+
+// Complex combinations
+query, _ := parser.Parse("name:jo* OR name:ja* AND NOT age:18")
+// BSON: map[$or:[map[name:map[$regex:jo.* $options:i]] map[name:map[$regex:ja.* $options:i]]] age:map[$ne:18]]
 ```
 
-## Development
+### Date Queries
 
-### Project Structure
+```go
+// Exact date
+query, _ := parser.Parse("created_at:2023-01-15")
+// BSON: map[created_at:2023-01-15 00:00:00 +0000 UTC]
 
-```
-bsonic/
-├── bsonic.go          # Main library implementation
-├── bsonic_test.go     # Unit tests
-├── go.mod             # Go module definition
-├── go.sum             # Go module checksums
-├── README.md          # This file
-├── CHANGELOG.md       # Version history
-├── LICENSE            # Apache 2.0 license
-├── Makefile           # Build and test commands
-├── docker-compose.yml # MongoDB integration testing
-├── examples/          # Usage examples
-│   └── main.go
-├── integration/       # Integration tests
-│   ├── integration_test.go
-│   ├── README.md
-│   └── init/
-│       └── 01-seed-data.js
-└── scripts/           # Helper scripts
-    └── test-integration.sh
-```
+// Date range
+query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31]")
+// BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC]]
 
-### Contributing
+// Date range with wildcards
+query, _ := parser.Parse("created_at:[2023-01-01 TO *]")
+// BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC]]
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+query, _ := parser.Parse("created_at:[* TO 2023-12-31]")
+// BSON: map[created_at:map[$lte:2023-12-31 00:00:00 +0000 UTC]]
 
-### Testing
+// Date comparisons
+query, _ := parser.Parse("created_at:>2024-01-01")
+// BSON: map[created_at:map[$gt:2024-01-01 00:00:00 +0000 UTC]]
 
-#### Unit Tests
-```bash
-go test ./...
+query, _ := parser.Parse("created_at:<2023-12-31")
+// BSON: map[created_at:map[$lt:2023-12-31 00:00:00 +0000 UTC]]
+
+query, _ := parser.Parse("created_at:>=2024-01-01")
+// BSON: map[created_at:map[$gte:2024-01-01 00:00:00 +0000 UTC]]
+
+query, _ := parser.Parse("created_at:<=2023-12-31")
+// BSON: map[created_at:map[$lte:2023-12-31 00:00:00 +0000 UTC]]
+
+// Complex date queries
+query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND status:active")
+// BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC] status:active]
+
+query, _ := parser.Parse("created_at:>2024-01-01 OR updated_at:<2023-01-01")
+// BSON: map[$or:[map[created_at:map[$gt:2024-01-01 00:00:00 +0000 UTC]] map[updated_at:map[$lt:2023-01-01 00:00:00 +0000 UTC]]]]
 ```
 
-#### Integration Tests
-Integration tests run against a real MongoDB database using Docker:
+### Supported Date Formats
 
-```bash
-# Start MongoDB container
-make docker-up
+The library automatically detects and parses various date formats:
 
-# Run integration tests
-make test-integration
+- `2023-01-15` (ISO 8601 date)
+- `2023-01-15T10:30:00Z` (ISO 8601 datetime)
+- `2023-01-15T10:30:00` (ISO 8601 datetime without timezone)
+- `2023-01-15 10:30:00` (space-separated datetime)
+- `01/15/2023` (US format)
+- `2023/01/15` (ISO format)
 
-# Stop MongoDB container
-make docker-down
+### Type-Aware Parsing
+
+The library automatically detects and parses different data types:
+
+```go
+// Boolean values
+query, _ := parser.Parse("active:true")
+// BSON: map[active:true]
+
+// Numeric values
+query, _ := parser.Parse("age:25")
+// BSON: map[age:25]
+
+// Date values
+query, _ := parser.Parse("created_at:2023-01-15")
+// BSON: map[created_at:2023-01-15 00:00:00 +0000 UTC]
+
+// String values (default)
+query, _ := parser.Parse("name:john")
+// BSON: map[name:john]
 ```
 
-For more detailed integration testing options, see the [Integration Testing Guide](integration/README.md).
+## Integration Testing
 
-#### Dependencies
-See [DEPENDENCIES.md](DEPENDENCIES.md) for a complete list of required and optional dependencies.
+This library includes comprehensive integration tests that run against a real MongoDB instance. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md) for details on how to run integration tests locally.
 
-### Roadmap
+## Examples
 
-- [x] Basic field matching
-- [x] Wildcard support
-- [x] Dot notation for nested fields
-- [x] OR operator support
-- [x] NOT operator support
-- [x] Complex operator combinations (OR with AND and NOT)
-- [ ] Array search optimization
-- [ ] Range queries (age:[18 TO 65])
-- [ ] Fuzzy search
-- [ ] Custom field mappings
-- [ ] Query validation
-- [ ] Performance optimizations
+Check out the [examples](examples/) directory for more detailed usage examples.
+
+## Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## Dependencies
 
-Inspired by Lucene query syntax and designed for seamless integration with MongoDB's Go driver.
+See [DEPENDENCIES.md](DEPENDENCIES.md) for information about required and optional dependencies.

@@ -2,6 +2,7 @@ package bsonic
 
 import (
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -52,11 +53,11 @@ func TestParseSimpleFieldValue(t *testing.T) {
 		},
 		{
 			input:    "age:25",
-			expected: bson.M{"age": "25"},
+			expected: bson.M{"age": 25.0},
 		},
 		{
 			input:    "active:true",
-			expected: bson.M{"active": "true"},
+			expected: bson.M{"active": true},
 		},
 	}
 
@@ -140,7 +141,7 @@ func TestParseAndOperator(t *testing.T) {
 		t.Fatalf("Parse AND query should not return error, got: %v", err)
 	}
 
-	expected := bson.M{"name": "john", "age": "25"}
+	expected := bson.M{"name": "john", "age": 25.0}
 	if len(query) != len(expected) {
 		t.Fatalf("Expected %d fields, got %d", len(expected), len(query))
 	}
@@ -210,8 +211,8 @@ func TestParseOrOperator(t *testing.T) {
 			input: "age:25 OR age:30",
 			expected: bson.M{
 				"$or": []bson.M{
-					{"age": "25"},
-					{"age": "30"},
+					{"age": 25.0},
+					{"age": 30.0},
 				},
 			},
 		},
@@ -283,7 +284,7 @@ func TestParseNotOperator(t *testing.T) {
 			input: "name:john AND NOT age:25",
 			expected: bson.M{
 				"name": "john",
-				"age":  bson.M{"$ne": "25"},
+				"age":  bson.M{"$ne": 25.0},
 			},
 		},
 		{
@@ -350,7 +351,7 @@ func TestParseComplexOperators(t *testing.T) {
 					{"name": "john"},
 					{"name": "jane"},
 				},
-				"age": "25",
+				"age": 25.0,
 			},
 		},
 		{
@@ -369,7 +370,7 @@ func TestParseComplexOperators(t *testing.T) {
 					{"name": bson.M{"$regex": "jo.*", "$options": "i"}},
 					{"name": bson.M{"$regex": "ja.*", "$options": "i"}},
 				},
-				"age": bson.M{"$ne": "18"},
+				"age": bson.M{"$ne": 18.0},
 			},
 		},
 	}
@@ -424,4 +425,244 @@ func TestParseComplexOperators(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Date query tests
+func TestParseDateQueries(t *testing.T) {
+	parser := New()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "created_at:2023-01-15",
+			expected: bson.M{
+				"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
+			},
+			desc: "exact date",
+		},
+		{
+			input: "created_at:2023-01-15T10:30:00Z",
+			expected: bson.M{
+				"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
+			},
+			desc: "exact datetime",
+		},
+		{
+			input: "created_at:[2023-01-01 TO 2023-12-31]",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date range",
+		},
+		{
+			input: "created_at:>2024-01-01",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date greater than",
+		},
+		{
+			input: "created_at:<2023-12-31",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$lt": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date less than",
+		},
+		{
+			input: "created_at:>=2024-01-01",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$gte": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date greater than or equal",
+		},
+		{
+			input: "created_at:<=2023-12-31",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date less than or equal",
+		},
+		{
+			input: "created_at:[2023-01-01 TO *]",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date range with wildcard end",
+		},
+		{
+			input: "created_at:[* TO 2023-12-31]",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			desc: "date range with wildcard start",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if len(result) != 1 {
+				t.Fatalf("Expected 1 field, got %d", len(result))
+			}
+
+			field := "created_at"
+			actualValue, exists := result[field]
+			if !exists {
+				t.Fatalf("Expected field %s not found", field)
+			}
+
+			// Compare the values
+			if !compareBSONValues(actualValue, test.expected[field]) {
+				t.Fatalf("Expected %s=%v, got %s=%v", field, test.expected[field], field, actualValue)
+			}
+		})
+	}
+}
+
+func TestParseComplexDateQueries(t *testing.T) {
+	parser := New()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "created_at:[2023-01-01 TO 2023-12-31] AND status:active",
+			expected: bson.M{
+				"created_at": bson.M{
+					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+				},
+				"status": "active",
+			},
+			desc: "date range with AND",
+		},
+		{
+			input: "created_at:>2024-01-01 OR updated_at:<2023-01-01",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"created_at": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					{"updated_at": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+			desc: "date comparisons with OR",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			// Basic structure check
+			if len(result) < 1 {
+				t.Fatalf("Expected at least 1 field, got %d", len(result))
+			}
+
+			// Check each field
+			for field, expectedValue := range test.expected {
+				if actualValue, exists := result[field]; !exists {
+					t.Fatalf("Expected field %s not found", field)
+				} else if !compareBSONValues(actualValue, expectedValue) {
+					t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
+				}
+			}
+		})
+	}
+}
+
+func TestParseInvalidDateQueries(t *testing.T) {
+	parser := New()
+
+	invalidQueries := []string{
+		"created_at:[invalid TO 2023-12-31]",
+		"created_at:[2023-01-01 TO invalid]",
+		"created_at:>invalid",
+		"created_at:[2023-01-01 TO 2023-12-31 TO 2024-01-01]", // Too many TO clauses
+		"created_at:[* TO *]",                                 // Both wildcards not allowed
+	}
+
+	for _, invalidQuery := range invalidQueries {
+		t.Run(invalidQuery, func(t *testing.T) {
+			_, err := parser.Parse(invalidQuery)
+			if err == nil {
+				t.Fatalf("Expected error for invalid date query '%s', got none", invalidQuery)
+			}
+		})
+	}
+}
+
+// Helper function to compare BSON values
+func compareBSONValues(actual, expected interface{}) bool {
+	// Handle time.Time comparison
+	if actualTime, ok := actual.(time.Time); ok {
+		if expectedTime, ok := expected.(time.Time); ok {
+			return actualTime.Equal(expectedTime)
+		}
+		return false
+	}
+
+	// Handle bson.M comparison
+	if actualMap, ok := actual.(bson.M); ok {
+		if expectedMap, ok := expected.(bson.M); ok {
+			if len(actualMap) != len(expectedMap) {
+				return false
+			}
+			for key, expectedValue := range expectedMap {
+				actualValue, exists := actualMap[key]
+				if !exists {
+					return false
+				}
+				if !compareBSONValues(actualValue, expectedValue) {
+					return false
+				}
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle []bson.M comparison
+	if actualArray, ok := actual.([]bson.M); ok {
+		if expectedArray, ok := expected.([]bson.M); ok {
+			if len(actualArray) != len(expectedArray) {
+				return false
+			}
+			for i, expectedValue := range expectedArray {
+				if !compareBSONValues(actualArray[i], expectedValue) {
+					return false
+				}
+			}
+			return true
+		}
+		return false
+	}
+
+	// Default comparison
+	return actual == expected
 }
