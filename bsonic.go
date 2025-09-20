@@ -311,13 +311,13 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 	for i < len(part) {
 		char := part[i]
 
-		switch {
-		case char == ' ' || char == '\t' || char == '\n':
+		switch char {
+		case ' ', '\t', '\n':
 			i++
-		case char == '(':
+		case '(':
 			tokens = append(tokens, Token{Type: TokenLParen, Value: "("})
 			i++
-		case char == ')':
+		case ')':
 			tokens = append(tokens, Token{Type: TokenRParen, Value: ")"})
 			i++
 		default:
@@ -582,7 +582,7 @@ func (p *Parser) astToBSON(node *Node) bson.M {
 				}
 				negatedConditions = append(negatedConditions, negatedCondition)
 			}
-			return bson.M{"$and": []bson.M{{"$or": negatedConditions}}}
+			return bson.M{"$or": negatedConditions}
 		}
 
 		// For other cases, negate each field
@@ -599,191 +599,6 @@ func (p *Parser) astToBSON(node *Node) bson.M {
 	default:
 		return bson.M{}
 	}
-}
-
-// parseQuery handles field:value queries with AND/OR/NOT operators (legacy)
-func (p *Parser) parseQuery(query string) (bson.M, error) {
-	result := bson.M{}
-
-	// Handle OR queries
-	if strings.Contains(strings.ToUpper(query), " OR ") {
-		orConditions, err := p.extractOrConditions(query)
-		if err != nil {
-			return nil, err
-		}
-		if len(orConditions) > 0 {
-			result["$or"] = orConditions
-		}
-
-		// Extract AND conditions from OR query
-		andConditions, err := p.extractAndConditions(query)
-		if err != nil {
-			return nil, err
-		}
-		for field, value := range andConditions {
-			result[field] = value
-		}
-
-		// Extract NOT conditions from OR query
-		_, notConditions, err := p.extractNotConditions(query)
-		if err != nil {
-			return nil, err
-		}
-		for field, value := range notConditions {
-			result[field] = bson.M{"$ne": value}
-		}
-	} else if strings.Contains(strings.ToUpper(query), " NOT ") || strings.HasPrefix(strings.ToUpper(strings.TrimSpace(query)), "NOT ") {
-		// Handle NOT queries
-		query, notConditions, err := p.extractNotConditions(query)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add NOT conditions
-		for field, value := range notConditions {
-			result[field] = bson.M{"$ne": value}
-		}
-
-		// Parse remaining query for AND conditions
-		if strings.TrimSpace(query) != "" {
-			andConditions, err := p.extractAndConditions(query)
-			if err != nil {
-				return nil, err
-			}
-			for field, value := range andConditions {
-				result[field] = value
-			}
-		}
-	} else {
-		// Handle simple AND queries or single field:value
-		andConditions, err := p.extractAndConditions(query)
-		if err != nil {
-			return nil, err
-		}
-		for field, value := range andConditions {
-			result[field] = value
-		}
-	}
-
-	return result, nil
-}
-
-// extractNotConditions extracts NOT conditions from the query
-func (p *Parser) extractNotConditions(query string) (string, bson.M, error) {
-	notConditions := bson.M{}
-
-	// Find NOT patterns: "NOT field:value" or "field:value AND NOT field2:value2"
-	re := regexp.MustCompile(`(?:^|\s+)NOT\s+(\w+(?:\.\w+)*):([^\s]+(?:"[^"]*"|[^\s]+)*)`)
-	matches := re.FindAllStringSubmatch(query, -1)
-
-	for _, match := range matches {
-		field := match[1]
-		valueStr := strings.TrimSpace(match[2])
-
-		value, err := p.parseValue(p.unquote(valueStr))
-		if err != nil {
-			return "", nil, err
-		}
-
-		notConditions[field] = value
-	}
-
-	// Remove NOT conditions from the original query
-	cleanedQuery := re.ReplaceAllString(query, "")
-	cleanedQuery = strings.TrimSpace(cleanedQuery)
-	cleanedQuery = strings.TrimSuffix(cleanedQuery, " AND")
-
-	return cleanedQuery, notConditions, nil
-}
-
-// extractOrConditions extracts OR conditions from the query
-func (p *Parser) extractOrConditions(query string) ([]bson.M, error) {
-	var orConditions []bson.M
-
-	re := regexp.MustCompile(`\s+OR\s+`)
-	parts := re.Split(query, -1)
-
-	if len(parts) > 1 {
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			// Check if this part contains AND or NOT operators
-			if strings.Contains(strings.ToUpper(part), " AND ") || strings.Contains(strings.ToUpper(part), " NOT ") {
-				andIndex := strings.Index(strings.ToUpper(part), " AND ")
-				if andIndex > 0 {
-					fieldPart := strings.TrimSpace(part[:andIndex])
-					field, value, err := p.parseFieldValue(fieldPart)
-					if err == nil {
-						orConditions = append(orConditions, bson.M{field: value})
-					}
-				}
-				continue
-			}
-
-			field, value, err := p.parseFieldValue(part)
-			if err != nil {
-				return nil, err
-			}
-
-			orConditions = append(orConditions, bson.M{field: value})
-		}
-	}
-
-	return orConditions, nil
-}
-
-// extractAndConditions extracts AND conditions and simple field:value pairs
-func (p *Parser) extractAndConditions(query string) (bson.M, error) {
-	result := bson.M{}
-
-	re := regexp.MustCompile(`\s+AND\s+`)
-	parts := re.Split(query, -1)
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" || part == "AND" {
-			continue
-		}
-
-		// Skip if this part contains OR or NOT
-		if strings.Contains(strings.ToUpper(part), " OR ") || strings.Contains(strings.ToUpper(part), " NOT ") || strings.HasPrefix(strings.ToUpper(part), "NOT ") {
-			continue
-		}
-
-		field, value, err := p.parseFieldValue(part)
-		if err != nil {
-			return nil, err
-		}
-
-		result[field] = value
-	}
-
-	return result, nil
-}
-
-// parseFieldValue parses a field:value pair
-func (p *Parser) parseFieldValue(part string) (string, interface{}, error) {
-	colonIndex := strings.Index(part, ":")
-	if colonIndex == -1 {
-		return "", nil, errors.New("invalid query format: expected field:value")
-	}
-
-	field := strings.TrimSpace(part[:colonIndex])
-	valueStr := strings.TrimSpace(part[colonIndex+1:])
-
-	if field == "" || valueStr == "" {
-		return "", nil, errors.New("field and value cannot be empty")
-	}
-
-	value, err := p.parseValue(p.unquote(valueStr))
-	if err != nil {
-		return "", nil, err
-	}
-
-	return field, value, nil
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
@@ -819,12 +634,8 @@ func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 		return bson.M{"$regex": pattern, "$options": "i"}, nil
 	}
 
-	// Check if it's a date string
-	if p.isDateString(valueStr) {
-		date, err := p.parseDate(valueStr)
-		if err != nil {
-			return valueStr, nil
-		}
+	// Try to parse as a date
+	if date, err := p.parseDate(valueStr); err == nil {
 		return date, nil
 	}
 
@@ -939,25 +750,6 @@ func (p *Parser) parseDate(dateStr string) (time.Time, error) {
 	}
 
 	return time.Time{}, errors.New("unable to parse date: " + dateStr)
-}
-
-// isDateString checks if a string looks like a date
-func (p *Parser) isDateString(valueStr string) bool {
-	datePatterns := []string{
-		`^\d{4}-\d{2}-\d{2}$`,
-		`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`,
-		`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$`,
-		`^\d{4}/\d{2}/\d{2}$`,
-		`^\d{2}/\d{2}/\d{4}$`,
-	}
-
-	for _, pattern := range datePatterns {
-		if matched, _ := regexp.MatchString(pattern, valueStr); matched {
-			return true
-		}
-	}
-
-	return false
 }
 
 // unquote removes surrounding quotes if present

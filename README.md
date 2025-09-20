@@ -14,6 +14,7 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Dot notation**: Query nested data structures using dot notation
 - **Array search**: Search within array fields
 - **Logical operators**: Support for AND, OR, and NOT operations
+- **Grouping logic**: Parentheses support for complex query grouping and precedence control
 - **Date queries**: Full support for date range and comparison queries
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
@@ -101,6 +102,52 @@ query, _ := parser.Parse("name:john AND NOT age:25")
 query, _ := parser.Parse("name:jo* OR name:ja* AND NOT age:18")
 // BSON: map[$or:[map[name:map[$regex:jo.* $options:i]] map[name:map[$regex:ja.* $options:i]]] age:map[$ne:18]]
 ```
+
+### Grouping Logic with Parentheses
+
+Bsonic supports parentheses for grouping expressions and controlling operator precedence, enabling complex query logic. Parentheses allow you to:
+
+- **Control precedence**: Override the default operator precedence (NOT > AND > OR)
+- **Group conditions**: Create logical groups that are evaluated together
+- **Build complex queries**: Combine multiple operators in sophisticated ways
+- **Nest expressions**: Create deeply nested query structures
+
+**Operator Precedence (without parentheses):**
+1. `NOT` (highest precedence)
+2. `AND` 
+3. `OR` (lowest precedence)
+
+```go
+// Grouped OR with AND
+query, _ := parser.Parse("(name:john OR name:jane) AND age:25")
+// BSON: map[$and:[map[$or:[map[name:john] map[name:jane]]] map[age:25]]]
+
+// OR with grouped AND
+query, _ := parser.Parse("name:john OR (name:jane AND age:25)")
+// BSON: map[$or:[map[name:john] map[name:jane age:25]]]
+
+// Grouped AND expressions with OR
+query, _ := parser.Parse("(name:john AND age:25) OR (name:jane AND age:30)")
+// BSON: map[$or:[map[name:john age:25] map[name:jane age:30]]]
+
+// NOT with grouped OR
+query, _ := parser.Parse("NOT (name:john OR name:jane)")
+// BSON: map[$or:[map[name:map[$ne:john]] map[name:map[$ne:jane]]]]
+
+// Nested parentheses
+query, _ := parser.Parse("((name:john OR name:jane) AND age:25) OR status:active")
+// BSON: map[$or:[map[$and:[map[$or:[map[name:john] map[name:jane]]] map[age:25]]] map[status:active]]]
+
+// Grouped wildcards and numbers
+query, _ := parser.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
+// BSON: map[$and:[map[$or:[map[name:map[$regex:jo.* $options:i]] map[name:map[$regex:ja.* $options:i]]]] map[$or:[map[age:25] map[age:30]]]]]
+
+// Date range with grouped status
+query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
+// BSON: map[$and:[map[$or:[map[status:active] map[status:pending]]] map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC]]]]
+```
+
+**Note:** Parentheses must be properly matched. Invalid patterns like `(name:john OR name:jane` (unmatched opening parenthesis) or `name:john OR name:jane)` (unmatched closing parenthesis) will result in parsing errors.
 
 ### Date Queries
 

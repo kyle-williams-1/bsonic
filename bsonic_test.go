@@ -1,22 +1,23 @@
-package bsonic
+package bsonic_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/kyle-williams-1/bsonic"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestNew(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 	if parser == nil {
 		t.Fatal("New() should return a non-nil parser")
 	}
 }
 
 func TestParseEmptyQuery(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse("")
 	if err != nil {
@@ -29,7 +30,7 @@ func TestParseEmptyQuery(t *testing.T) {
 }
 
 func TestParseWhitespaceQuery(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse("   ")
 	if err != nil {
@@ -42,7 +43,7 @@ func TestParseWhitespaceQuery(t *testing.T) {
 }
 
 func TestParseSimpleFieldValue(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -60,54 +61,35 @@ func TestParseSimpleFieldValue(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			if len(result) != len(test.expected) {
-				t.Fatalf("Expected %d fields, got %d", len(test.expected), len(result))
-			}
-
-			for key, expectedValue := range test.expected {
-				if actualValue, exists := result[key]; !exists {
-					t.Fatalf("Expected field %s not found", key)
-				} else if actualValue != expectedValue {
-					t.Fatalf("Expected %s=%v, got %s=%v", key, expectedValue, key, actualValue)
-				}
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
 			}
 		})
 	}
 }
 
 func TestParseWildcardQuery(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse("name:jo*")
 	if err != nil {
 		t.Fatalf("Parse wildcard query should not return error, got: %v", err)
 	}
 
-	if len(query) != 1 {
-		t.Fatalf("Expected 1 field, got %d", len(query))
+	expected := bson.M{
+		"name": bson.M{
+			"$regex":   "^jo.*",
+			"$options": "i",
+		},
 	}
 
-	nameValue, exists := query["name"]
-	if !exists {
-		t.Fatal("Expected 'name' field not found")
-	}
-
-	regexValue, ok := nameValue.(bson.M)
-	if !ok {
-		t.Fatalf("Expected regex object, got %T", nameValue)
-	}
-
-	if regexValue["$regex"] != "^jo.*" {
-		t.Fatalf("Expected regex '^jo.*', got %v", regexValue["$regex"])
-	}
-
-	if regexValue["$options"] != "i" {
-		t.Fatalf("Expected case-insensitive option, got %v", regexValue["$options"])
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
 	}
 }
 
 func TestParseQuotedValue(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse(`name:"john doe"`)
 	if err != nil {
@@ -115,17 +97,14 @@ func TestParseQuotedValue(t *testing.T) {
 	}
 
 	expected := bson.M{"name": "john doe"}
-	if len(query) != len(expected) {
-		t.Fatalf("Expected %d fields, got %d", len(expected), len(query))
-	}
 
-	if query["name"] != "john doe" {
-		t.Fatalf("Expected name='john doe', got name='%v'", query["name"])
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
 	}
 }
 
 func TestParseAndOperator(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse("name:john AND age:25")
 	if err != nil {
@@ -133,21 +112,14 @@ func TestParseAndOperator(t *testing.T) {
 	}
 
 	expected := bson.M{"name": "john", "age": 25.0}
-	if len(query) != len(expected) {
-		t.Fatalf("Expected %d fields, got %d", len(expected), len(query))
-	}
 
-	for key, expectedValue := range expected {
-		if actualValue, exists := query[key]; !exists {
-			t.Fatalf("Expected field %s not found", key)
-		} else if actualValue != expectedValue {
-			t.Fatalf("Expected %s=%v, got %s=%v", key, expectedValue, key, actualValue)
-		}
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
 	}
 }
 
 func TestParseInvalidQuery(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	invalidQueries := []string{"invalid", ":value"}
 
@@ -162,7 +134,7 @@ func TestParseInvalidQuery(t *testing.T) {
 }
 
 func TestParseDotNotation(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query, err := parser.Parse("user.profile.email:john@example.com")
 	if err != nil {
@@ -170,17 +142,14 @@ func TestParseDotNotation(t *testing.T) {
 	}
 
 	expected := bson.M{"user.profile.email": "john@example.com"}
-	if len(query) != len(expected) {
-		t.Fatalf("Expected %d fields, got %d", len(expected), len(query))
-	}
 
-	if query["user.profile.email"] != "john@example.com" {
-		t.Fatalf("Expected user.profile.email='john@example.com', got %v", query["user.profile.email"])
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
 	}
 }
 
 func TestParseOrOperator(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -222,45 +191,15 @@ func TestParseOrOperator(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			orValue, exists := result["$or"]
-			if !exists {
-				t.Fatalf("Expected $or field not found")
-			}
-
-			orArray, ok := orValue.([]bson.M)
-			if !ok {
-				t.Fatalf("Expected $or to be []bson.M, got %T", orValue)
-			}
-
-			expectedOr := test.expected["$or"].([]bson.M)
-			if len(orArray) != len(expectedOr) {
-				t.Fatalf("Expected %d OR conditions, got %d", len(expectedOr), len(orArray))
-			}
-
-			for i, expectedCondition := range expectedOr {
-				if i >= len(orArray) {
-					t.Fatalf("Missing OR condition at index %d", i)
-				}
-
-				actualCondition := orArray[i]
-				if len(actualCondition) != len(expectedCondition) {
-					t.Fatalf("Expected condition %d to have %d fields, got %d", i, len(expectedCondition), len(actualCondition))
-				}
-
-				for field, expectedValue := range expectedCondition {
-					if actualValue, exists := actualCondition[field]; !exists {
-						t.Fatalf("Expected field %s not found in condition %d", field, i)
-					} else if actualValue != expectedValue {
-						t.Fatalf("Expected %s=%v in condition %d, got %s=%v", field, expectedValue, i, field, actualValue)
-					}
-				}
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
 			}
 		})
 	}
 }
 
 func TestParseNotOperator(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -295,33 +234,15 @@ func TestParseNotOperator(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			if len(result) != len(test.expected) {
-				t.Fatalf("Expected %d fields, got %d", len(test.expected), len(result))
-			}
-
-			for field, expectedValue := range test.expected {
-				if actualValue, exists := result[field]; !exists {
-					t.Fatalf("Expected field %s not found", field)
-				} else {
-					if expectedMap, ok := expectedValue.(bson.M); ok {
-						if actualMap, ok := actualValue.(bson.M); ok {
-							if expectedMap["$ne"] != actualMap["$ne"] {
-								t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
-							}
-						} else {
-							t.Fatalf("Expected %s to be bson.M, got %T", field, actualValue)
-						}
-					} else if actualValue != expectedValue {
-						t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
-					}
-				}
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
 			}
 		})
 	}
 }
 
 func TestParseComplexOperators(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input       string
@@ -365,49 +286,15 @@ func TestParseComplexOperators(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			if len(result) < 1 {
-				t.Fatalf("Expected at least 1 field, got %d", len(result))
-			}
-
-			if expectedOr, hasOr := test.expected["$or"]; hasOr {
-				if actualOr, exists := result["$or"]; !exists {
-					t.Fatalf("Expected $or field not found")
-				} else {
-					expectedOrArray := expectedOr.([]bson.M)
-					actualOrArray := actualOr.([]bson.M)
-					if len(actualOrArray) != len(expectedOrArray) {
-						t.Fatalf("Expected %d OR conditions, got %d", len(expectedOrArray), len(actualOrArray))
-					}
-				}
-			}
-
-			for field, expectedValue := range test.expected {
-				if field == "$or" {
-					continue
-				}
-
-				if actualValue, exists := result[field]; !exists {
-					t.Fatalf("Expected field %s not found", field)
-				} else {
-					if expectedMap, ok := expectedValue.(bson.M); ok {
-						if actualMap, ok := actualValue.(bson.M); ok {
-							if expectedMap["$ne"] != actualMap["$ne"] {
-								t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
-							}
-						} else {
-							t.Fatalf("Expected %s to be bson.M, got %T", field, actualValue)
-						}
-					} else if actualValue != expectedValue {
-						t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
-					}
-				}
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
 			}
 		})
 	}
 }
 
 func TestParseDateQueries(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -519,7 +406,7 @@ func TestParseDateQueries(t *testing.T) {
 }
 
 func TestParseComplexDateQueries(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -556,23 +443,15 @@ func TestParseComplexDateQueries(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			if len(result) < 1 {
-				t.Fatalf("Expected at least 1 field, got %d", len(result))
-			}
-
-			for field, expectedValue := range test.expected {
-				if actualValue, exists := result[field]; !exists {
-					t.Fatalf("Expected field %s not found", field)
-				} else if !compareBSONValues(actualValue, expectedValue) {
-					t.Fatalf("Expected %s=%v, got %s=%v", field, expectedValue, field, actualValue)
-				}
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
 			}
 		})
 	}
 }
 
 func TestParseInvalidDateQueries(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	invalidQueries := []string{
 		"created_at:[invalid TO 2023-12-31]",
@@ -593,7 +472,7 @@ func TestParseInvalidDateQueries(t *testing.T) {
 }
 
 func TestParseParenthesesQueries(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	tests := []struct {
 		input    string
@@ -638,13 +517,9 @@ func TestParseParenthesesQueries(t *testing.T) {
 		{
 			input: "NOT (name:john OR name:jane)",
 			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"name": bson.M{"$ne": "john"}},
-							{"name": bson.M{"$ne": "jane"}},
-						},
-					},
+				"$or": []bson.M{
+					{"name": bson.M{"$ne": "john"}},
+					{"name": bson.M{"$ne": "jane"}},
 				},
 			},
 			desc: "NOT with grouped OR",
@@ -726,7 +601,7 @@ func TestParseParenthesesQueries(t *testing.T) {
 }
 
 func TestDebugIncompleteExpression(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	query := "(name:john AND)"
 	fmt.Printf("Testing: %s\n", query)
@@ -739,7 +614,7 @@ func TestDebugIncompleteExpression(t *testing.T) {
 }
 
 func TestParseInvalidParenthesesQueries(t *testing.T) {
-	parser := New()
+	parser := bsonic.New()
 
 	invalidQueries := []string{
 		"(name:john OR name:jane",      // unmatched opening parenthesis

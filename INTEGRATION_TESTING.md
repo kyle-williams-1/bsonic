@@ -29,13 +29,13 @@ Integration testing against a real MongoDB database is crucial for several reaso
 ## Architecture Overview
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Unit Tests    │    │ Integration Tests│    │   Real MongoDB  │
-│                 │    │                  │    │                 │
-│ - Mock data     │    │ - Real data      │    │ - Seeded data   │
-│ - Fast execution│    │ - Docker container│   │ - Real indexes  │
-│ - Isolated      │    │ - Real queries   │    │ - Real performance│
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌───────────────────┐    ┌───────────────────┐
+│   Unit Tests    │    │ Integration Tests │    │   Real MongoDB    │
+│                 │    │                   │    │                   │
+│ - Mock data     │    │ - Real data       │    │ - Seeded data     │
+│ - Fast execution│    │ - Docker container│    │ - Real indexes    │
+│ - Isolated      │    │ - Real queries    │    │ - Real performance│
+└─────────────────┘    └───────────────────┘    └───────────────────┘
 ```
 
 ## Test Data Design
