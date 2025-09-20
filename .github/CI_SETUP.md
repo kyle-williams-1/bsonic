@@ -1,132 +1,169 @@
-# GitHub CI/CD Setup Guide
+# CI/CD Setup
 
-This document explains how to set up the GitHub Actions workflows for the bsonic project.
+This document explains the streamlined CI/CD pipeline for the BSON library.
 
-## Workflows Created
+## Workflow Overview
 
-### 1. `test.yml` - Basic Test Workflow
-- **Triggers**: Push to main/develop, Pull Requests
-- **Purpose**: Quick test feedback
-- **Features**:
-  - Tests on Go 1.25
-  - Caches dependencies
-  - Runs tests with coverage
-  - Uploads coverage to Codecov
+### 1. **CI Workflow** (`ci.yml`)
+**Triggers**: Push/PR to `main` or `develop` branches
 
-### 2. `ci.yml` - Comprehensive CI Pipeline
-- **Triggers**: Push to main/develop, Pull Requests
-- **Purpose**: Full CI pipeline
-- **Features**:
-  - **Test Job**: Unit tests (Go 1.25)
-  - **Lint Job**: Code quality checks with golangci-lint
-  - **Build Job**: Cross-platform builds (Linux, macOS, Windows)
-  - **Security Job**: Security scanning with Gosec
+**Jobs**:
+- **Test**: Unit tests + coverage (library code only)
+- **Lint**: Code quality checks with golangci-lint
+- **Build**: Multi-platform build verification
+- **Security**: Security scanning with Gosec
 
-### 3. `pr.yml` - Pull Request Checks
-- **Triggers**: Pull Requests only
-- **Purpose**: PR-specific validation
-- **Features**:
-  - Format checking
-  - Go vet
-  - Test execution
-  - Coverage requirements (80% minimum)
-  - Dependency verification
+### 2. **Integration Workflow** (`integration.yml`)
+**Triggers**: Push/PR to `main` or `develop` branches, manual dispatch
 
-### 4. `release.yml` - Automated Releases
-- **Triggers**: Git tags (v*)
-- **Purpose**: Automated release creation
-- **Features**:
-  - Runs tests before release
-  - Generates changelog
-  - Creates GitHub release
+**Jobs**:
+- **Integration Tests**: MongoDB integration tests with real database
+- **Coverage**: Integration test coverage reporting
 
-## Setup Instructions
+### 3. **Release Workflow** (`release.yml`)
+**Triggers**: Tag creation (releases)
 
-### 1. Enable GitHub Actions
-1. Go to your repository on GitHub
-2. Click on "Actions" tab
-3. Enable GitHub Actions if prompted
+**Jobs**:
+- **Release**: Build and publish releases
 
-### 2. Set Up Branch Protection
-1. Go to Settings → Branches
-2. Add rule for `main` branch
-3. Configure required status checks:
-   - `Test` (from test.yml)
-   - `Lint` (from ci.yml)
-   - `Build` (from ci.yml)
-   - `Security Scan` (from ci.yml)
+## Why This Setup?
 
-### 3. Optional: Set Up Codecov
-1. Go to [codecov.io](https://codecov.io)
-2. Sign in with GitHub
-3. Add your repository
-4. The coverage will be automatically uploaded
+### **Before (Problems)**:
+- ❌ 5 separate workflow files
+- ❌ Redundant test execution
+- ❌ Wasted CI minutes
+- ❌ Inconsistent configurations
+- ❌ Maintenance overhead
 
-### 4. Optional: Set Up Security Alerts
-1. Go to Settings → Security & analysis
-2. Enable "Dependency graph"
-3. Enable "Dependabot alerts"
-4. Enable "Dependabot security updates"
+### **After (Benefits)**:
+- ✅ 3 focused workflows
+- ✅ No redundant test execution
+- ✅ Efficient resource usage
+- ✅ Consistent behavior
+- ✅ Easy maintenance
+
+## Workflow Details
+
+### CI Workflow
+```yaml
+# Runs on every push/PR
+- Unit tests (all packages)
+- Coverage (library code only)
+- Linting
+- Multi-platform builds
+- Security scanning
+```
+
+### Integration Workflow
+```yaml
+# Runs on every push/PR + manual
+- MongoDB integration tests
+- Integration coverage
+- Real database validation
+```
+
+### Release Workflow
+```yaml
+# Runs on tag creation
+- Build verification
+- Release preparation
+```
+
+## Coverage Strategy
+
+### **Library Coverage** (CI Workflow)
+- **Scope**: Main library code only (`.`)
+- **Purpose**: Track library code quality
+- **Excludes**: Examples, tests, integration tests
+
+### **Integration Coverage** (Integration Workflow)
+- **Scope**: Integration test code only
+- **Purpose**: Track integration test coverage
+- **Includes**: Integration test scenarios
+
+## Best Practices
+
+### **1. Efficient Testing**
+- Unit tests run once in CI
+- Integration tests run separately
+- No duplicate test execution
+
+### **2. Focused Workflows**
+- Each workflow has a specific purpose
+- Clear separation of concerns
+- Easy to understand and maintain
+
+### **3. Resource Optimization**
+- Tests run in parallel where possible
+- Caching for dependencies
+- Minimal redundant execution
+
+### **4. Coverage Accuracy**
+- Library coverage excludes test files
+- Integration coverage tracks test scenarios
+- Clear separation of concerns
 
 ## Local Development
 
-### Pre-commit Checks
-Run the same checks locally that CI will run:
-
+### **Run All Tests**
 ```bash
-# Run all pre-commit checks
-make pre-commit
-
-# Or run the script directly
-./scripts/test-local.sh
+make test-all
 ```
 
-### Available Make Targets
+### **Run Unit Tests Only**
 ```bash
-make test          # Run tests
-make test-coverage # Run tests with coverage
-make fmt           # Format code
-make lint          # Run linter
-make check         # Run fmt, test, lint
-make pre-commit    # Run all CI checks locally
-make security      # Run security scan
-make check-all     # Run all checks including security
+make test
 ```
 
-## Workflow Status Badges
+### **Run Integration Tests Only**
+```bash
+make test-integration
+```
 
-The README includes status badges that will show:
-- CI status
-- Test status
-- Go Report Card
-- License
-
-These will automatically update once the workflows are running.
-
-## Coverage Requirements
-
-- **Minimum coverage**: 80%
-- **Current coverage**: 85.5%
-- **Coverage reports**: Available in PR checks and Codecov
-
-## Security Features
-
-- **Dependency verification**: All dependencies are verified
-- **Security scanning**: Gosec scans for security issues
-- **SARIF upload**: Security results uploaded to GitHub Security tab
-- **Dependabot**: Automated dependency updates
+### **Generate Coverage**
+```bash
+make coverage
+```
 
 ## Troubleshooting
 
-### Common Issues
+### **CI Failures**
+1. Check the specific workflow that failed
+2. Look at the job logs for details
+3. Run tests locally to reproduce
 
-1. **Workflow not running**: Check if GitHub Actions is enabled
-2. **Tests failing**: Run `make pre-commit` locally first
-3. **Coverage too low**: Add more tests or adjust coverage threshold
-4. **Linting errors**: Run `make lint` to see issues
+### **Coverage Issues**
+1. Ensure coverage runs on library code only (`.`)
+2. Check that test files are excluded
+3. Verify coverage thresholds
 
-### Getting Help
+### **Integration Test Failures**
+1. Check MongoDB container status
+2. Verify test data seeding
+3. Check network connectivity
 
-- Check the Actions tab for detailed logs
-- Run local checks with `make pre-commit`
-- Review the workflow files in `.github/workflows/`
+## Maintenance
+
+### **Adding New Tests**
+- Unit tests: Add to `bsonic_test.go`
+- Integration tests: Add to `integration/integration_test.go`
+
+### **Updating Workflows**
+- CI changes: Modify `ci.yml`
+- Integration changes: Modify `integration.yml`
+- Release changes: Modify `release.yml`
+
+### **Coverage Updates**
+- Library coverage: Update CI workflow
+- Integration coverage: Update integration workflow
+
+## Summary
+
+The streamlined CI setup provides:
+- **Efficiency**: No redundant test execution
+- **Clarity**: Each workflow has a specific purpose
+- **Maintainability**: Easy to understand and modify
+- **Accuracy**: Proper coverage tracking
+- **Speed**: Faster CI execution
+
+This approach follows industry best practices for Go projects and provides a solid foundation for continuous integration and deployment.

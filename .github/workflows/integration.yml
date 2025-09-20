@@ -59,9 +59,6 @@ jobs:
         # Execute seed script
         mongosh --host localhost:27017 --username admin --password password --authenticationDatabase admin --file /tmp/seed-data.js
 
-    - name: Run unit tests
-      run: go test -v ./...
-
     - name: Run integration tests
       run: go test -tags=integration -v ./integration/...
       env:
