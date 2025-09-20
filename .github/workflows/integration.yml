@@ -36,7 +36,7 @@ jobs:
     - name: Start MongoDB with Docker Compose
       run: |
         # Start MongoDB with seed data
-        docker-compose up -d
+        docker compose up -d
         
         # Wait for MongoDB to be ready
         echo "Waiting for MongoDB to be ready..."
@@ -73,4 +73,4 @@ jobs:
       if: always()
       run: |
         # Stop and remove containers
-        docker-compose down -v
+        docker compose down -v
