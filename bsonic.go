@@ -25,10 +25,80 @@ const (
 	TokenRParen
 )
 
+// Logical operator definitions for tokenization
+type operatorDef struct {
+	pattern   string
+	tokenType TokenType
+}
+
+// All logical operators (AND, OR, NOT) are treated uniformly during tokenization
+// The distinction between binary/unary is handled during AST construction
+var operators = []operatorDef{
+	{" AND ", TokenAND}, // Binary: combines two conditions
+	{" OR ", TokenOR},   // Binary: combines two conditions
+	{" NOT ", TokenNOT}, // Unary: negates a condition (in middle of expression)
+	{"NOT ", TokenNOT},  // Unary: negates a condition (at start of expression)
+}
+
+// Regex patterns for tokenization
+var (
+	// Pattern to match operators with spaces, end of string, or closing parentheses
+	operatorRegex = regexp.MustCompile(`\s+(AND|OR|NOT)(?:\s+|$|\))`)
+)
+
 // Token represents a parsed token
 type Token struct {
 	Type  TokenType
 	Value string
+}
+
+// Helper functions for tokenization
+func (p *Parser) createToken(tokenType TokenType, value string) Token {
+	return Token{Type: tokenType, Value: value}
+}
+
+func (p *Parser) hasOperators(part string) bool {
+	upperPart := strings.ToUpper(part)
+	trimmed := strings.TrimSpace(part)
+	upperTrimmed := strings.ToUpper(trimmed)
+
+	// Check for operators with spaces on both sides
+	for _, op := range operators {
+		if strings.Contains(upperPart, op.pattern) {
+			return true
+		}
+	}
+
+	// Check for operators at the end of strings
+	operatorSuffixes := []string{" OR", " AND", " NOT"}
+	for _, suffix := range operatorSuffixes {
+		if strings.HasSuffix(upperTrimmed, suffix) {
+			return true
+		}
+	}
+
+	// Check for operators before closing parentheses
+	operatorWithParen := []string{" OR)", " AND)", " NOT)"}
+	for _, pattern := range operatorWithParen {
+		if strings.Contains(upperTrimmed, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p *Parser) findOperatorAtPosition(query string, pos int) (operatorDef, int) {
+	remaining := query[pos:]
+	upperRemaining := strings.ToUpper(remaining)
+
+	for _, op := range operators {
+		if strings.HasPrefix(upperRemaining, op.pattern) {
+			return op, pos + len(op.pattern)
+		}
+	}
+
+	return operatorDef{}, pos
 }
 
 // AST (Abstract Syntax Tree) node types
@@ -131,8 +201,7 @@ func (p *Parser) tokenize(query string) ([]Token, error) {
 	var tokens []Token
 	query = strings.TrimSpace(query)
 
-	// Use a more sophisticated approach to handle parentheses
-	// First, find all operators that are not inside parentheses
+	// Find all operators that are not inside parentheses
 	var operatorPositions []int
 	parenDepth := 0
 
@@ -144,19 +213,9 @@ func (p *Parser) tokenize(query string) ([]Token, error) {
 			parenDepth--
 		} else if parenDepth == 0 {
 			// Check for operators at this position
-			remaining := query[i:]
-			if strings.HasPrefix(strings.ToUpper(remaining), " AND ") {
+			if op, newPos := p.findOperatorAtPosition(query, i); op.pattern != "" {
 				operatorPositions = append(operatorPositions, i)
-				i += 4 // Skip " AND"
-			} else if strings.HasPrefix(strings.ToUpper(remaining), " OR ") {
-				operatorPositions = append(operatorPositions, i)
-				i += 3 // Skip " OR"
-			} else if strings.HasPrefix(strings.ToUpper(remaining), " NOT ") {
-				operatorPositions = append(operatorPositions, i)
-				i += 4 // Skip " NOT"
-			} else if strings.HasPrefix(strings.ToUpper(remaining), "NOT ") {
-				operatorPositions = append(operatorPositions, i)
-				i += 3 // Skip "NOT"
+				i = newPos - 1 // -1 because the loop will increment
 			}
 		}
 	}
@@ -174,18 +233,9 @@ func (p *Parser) tokenize(query string) ([]Token, error) {
 		}
 
 		// Add the operator
-		if strings.HasPrefix(strings.ToUpper(query[pos:]), " AND ") {
-			tokens = append(tokens, Token{Type: TokenAND, Value: "AND"})
-			lastPos = pos + 5
-		} else if strings.HasPrefix(strings.ToUpper(query[pos:]), " OR ") {
-			tokens = append(tokens, Token{Type: TokenOR, Value: "OR"})
-			lastPos = pos + 4
-		} else if strings.HasPrefix(strings.ToUpper(query[pos:]), " NOT ") {
-			tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
-			lastPos = pos + 5
-		} else if strings.HasPrefix(strings.ToUpper(query[pos:]), "NOT ") {
-			tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
-			lastPos = pos + 4
+		if op, _ := p.findOperatorAtPosition(query, pos); op.pattern != "" {
+			tokens = append(tokens, p.createToken(op.tokenType, strings.TrimSpace(op.pattern)))
+			lastPos = pos + len(op.pattern)
 		}
 	}
 
@@ -209,19 +259,11 @@ func (p *Parser) parsePart(part string) ([]Token, error) {
 	var tokens []Token
 
 	// Check if this part contains operators (for nested parsing)
-	// We need to handle operators inside parentheses differently
-	// Also check for operators at the end of strings or before closing parentheses
-	trimmed := strings.TrimSpace(part)
-	upperTrimmed := strings.ToUpper(trimmed)
-	if strings.Contains(strings.ToUpper(part), " OR ") || strings.Contains(strings.ToUpper(part), " AND ") || strings.Contains(strings.ToUpper(part), " NOT ") ||
-		strings.HasSuffix(upperTrimmed, " OR") || strings.HasSuffix(upperTrimmed, " AND") || strings.HasSuffix(upperTrimmed, " NOT") ||
-		strings.Contains(upperTrimmed, " OR)") || strings.Contains(upperTrimmed, " AND)") || strings.Contains(upperTrimmed, " NOT)") {
+	if p.hasOperators(part) {
 		// This part contains operators, so we need to parse it with a different approach
 		// Split on operators and handle each part
-		// Updated regex to handle operators at the end of strings or before closing parentheses
-		re := regexp.MustCompile(`\s+(AND|OR|NOT)(?:\s+|$|\))`)
-		subParts := re.Split(part, -1)
-		subOperators := re.FindAllString(part, -1)
+		subParts := operatorRegex.Split(part, -1)
+		subOperators := operatorRegex.FindAllString(part, -1)
 
 		for i, subPart := range subParts {
 			subPart = strings.TrimSpace(subPart)
@@ -236,14 +278,8 @@ func (p *Parser) parsePart(part string) ([]Token, error) {
 			// Add operator if present
 			if i < len(subOperators) {
 				op := strings.TrimSpace(subOperators[i])
-				switch strings.ToUpper(op) {
-				case "AND":
-					tokens = append(tokens, Token{Type: TokenAND, Value: "AND"})
-				case "OR":
-					tokens = append(tokens, Token{Type: TokenOR, Value: "OR"})
-				case "NOT":
-					tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
-				}
+				tokenType := p.getTokenTypeFromString(strings.ToUpper(op))
+				tokens = append(tokens, p.createToken(tokenType, op))
 			}
 		}
 
@@ -251,6 +287,20 @@ func (p *Parser) parsePart(part string) ([]Token, error) {
 	}
 
 	return p.parseSimplePart(part)
+}
+
+// getTokenTypeFromString converts operator string to token type
+func (p *Parser) getTokenTypeFromString(op string) TokenType {
+	switch op {
+	case "AND":
+		return TokenAND
+	case "OR":
+		return TokenOR
+	case "NOT":
+		return TokenNOT
+	default:
+		return TokenEOF
+	}
 }
 
 // parseSimplePart parses a simple part without operators
