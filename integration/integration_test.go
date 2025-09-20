@@ -234,6 +234,11 @@ func TestArrayQueries(t *testing.T) {
 			query:    "tags:golang",
 			expected: 1,
 		},
+		{
+			name:     "tag does NOT contain 'golang'",
+			query:    "NOT tags:golang",
+			expected: 4, // All except John Doe
+		},
 	}
 
 	for _, tt := range tests {
