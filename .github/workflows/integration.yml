@@ -75,7 +75,7 @@ jobs:
         MONGODB_URI: mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin
 
     - name: Upload coverage reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: integration-coverage

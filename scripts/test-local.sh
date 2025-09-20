@@ -34,7 +34,7 @@ echo "🧪 Running tests..."
 go test -v ./...
 
 echo "📊 Running tests with coverage..."
-go test -v -coverprofile=coverage.out -covermode=atomic ./...
+go test -v -coverprofile=coverage.out -covermode=atomic .
 
 echo "📈 Coverage report:"
 go tool cover -func=coverage.out | grep total
