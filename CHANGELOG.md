@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OR operator support
 - NOT operator support
 - Complex operator combinations (OR with AND and NOT)
+- Parentheses support for query grouping and precedence control
 - Quoted string value support
 - Comprehensive test suite
 - Example usage code
@@ -29,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `name:john AND NOT age:25` - NOT operator
 - `NOT status:inactive` - NOT operator at beginning
 - `name:jo* OR name:ja* AND NOT age:18` - Complex combinations
+- `(name:john OR name:jane) AND age:25` - Parentheses grouping
+- `NOT (name:john OR name:jane)` - NOT with grouped expressions
+- `((name:john OR name:jane) AND age:25) OR status:active` - Nested parentheses
 - `user.profile.email:john@example.com` - Dot notation for nested fields
 
 ### Planned Features
