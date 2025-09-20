@@ -106,8 +106,8 @@ func TestParseWildcardQuery(t *testing.T) {
 		t.Fatalf("Expected regex object, got %T", nameValue)
 	}
 
-	if regexValue["$regex"] != "jo.*" {
-		t.Fatalf("Expected regex 'jo.*', got %v", regexValue["$regex"])
+	if regexValue["$regex"] != "^jo.*" {
+		t.Fatalf("Expected regex '^jo.*', got %v", regexValue["$regex"])
 	}
 
 	if regexValue["$options"] != "i" {

@@ -294,8 +294,23 @@ func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 
 	// Check for wildcards
 	if strings.Contains(valueStr, "*") {
-		// Convert to regex pattern
+		// Convert to regex pattern with proper anchoring
 		pattern := strings.ReplaceAll(valueStr, "*", ".*")
+
+		// Add proper anchoring based on wildcard position
+		if strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*") {
+			// *J* - contains pattern (already correct with .*)
+		} else if strings.HasPrefix(valueStr, "*") {
+			// *J - ends with pattern
+			pattern = pattern + "$"
+		} else if strings.HasSuffix(valueStr, "*") {
+			// J* - starts with pattern
+			pattern = "^" + pattern
+		} else {
+			// J*K - starts and ends with specific patterns
+			pattern = "^" + pattern + "$"
+		}
+
 		regex := bson.M{"$regex": pattern, "$options": "i"}
 		return regex, nil
 	}

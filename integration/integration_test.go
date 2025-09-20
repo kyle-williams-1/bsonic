@@ -127,7 +127,7 @@ func TestWildcardQueries(t *testing.T) {
 		{
 			name:     "name starts with 'J'",
 			query:    "name:J*",
-			expected: 3, // John Doe, Jane Smith, Bob Johnson (contains J)
+			expected: 2, // John Doe, Jane Smith (starts with J)
 		},
 		{
 			name:     "email contains 'example'",
@@ -138,6 +138,11 @@ func TestWildcardQueries(t *testing.T) {
 			name:     "name contains 'o'",
 			query:    "name:*o*",
 			expected: 4, // John, Bob, Charlie, Alice (contains 'o')
+		},
+		{
+			name:     "name ends with 'son'",
+			query:    "name:*son",
+			expected: 2, // Johnson, Wilson (ends with 'son')
 		},
 	}
 
