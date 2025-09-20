@@ -48,6 +48,8 @@ jobs:
       run: go test -v ./...
     
     - name: Run tests with coverage
+      env:
+        GOTOOLCHAIN: go${{ matrix.go-version }}+auto
       run: go test -v -coverprofile=coverage.out ./...
     
     - name: Check coverage
