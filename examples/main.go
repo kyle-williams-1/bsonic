@@ -32,6 +32,13 @@ func main() {
 		"created_at:<=2023-12-31",
 		"created_at:[2023-01-01 TO 2023-12-31] AND status:active",
 		"created_at:>2024-01-01 OR updated_at:<2023-01-01",
+		// Parentheses examples
+		"(name:john OR name:jane) AND age:25",
+		"name:john OR (name:jane AND age:25)",
+		"((name:john OR name:jane) AND age:25) OR status:active",
+		"NOT (name:john OR name:jane)",
+		"(name:jo* OR name:ja*) AND (age:25 OR age:30)",
+		"created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)",
 	}
 
 	fmt.Println("Bsonic - Lucene-style MongoDB BSON Parser")

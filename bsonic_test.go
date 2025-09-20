@@ -1,6 +1,7 @@
 package bsonic
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -47,18 +48,9 @@ func TestParseSimpleFieldValue(t *testing.T) {
 		input    string
 		expected bson.M
 	}{
-		{
-			input:    "name:john",
-			expected: bson.M{"name": "john"},
-		},
-		{
-			input:    "age:25",
-			expected: bson.M{"age": 25.0},
-		},
-		{
-			input:    "active:true",
-			expected: bson.M{"active": true},
-		},
+		{"name:john", bson.M{"name": "john"}},
+		{"age:25", bson.M{"age": 25.0}},
+		{"active:true", bson.M{"active": true}},
 	}
 
 	for _, test := range tests {
@@ -100,7 +92,6 @@ func TestParseWildcardQuery(t *testing.T) {
 		t.Fatal("Expected 'name' field not found")
 	}
 
-	// Check if it's a regex object
 	regexValue, ok := nameValue.(bson.M)
 	if !ok {
 		t.Fatalf("Expected regex object, got %T", nameValue)
@@ -158,10 +149,7 @@ func TestParseAndOperator(t *testing.T) {
 func TestParseInvalidQuery(t *testing.T) {
 	parser := New()
 
-	invalidQueries := []string{
-		"invalid",
-		":value",
-	}
+	invalidQueries := []string{"invalid", ":value"}
 
 	for _, invalidQuery := range invalidQueries {
 		t.Run(invalidQuery, func(t *testing.T) {
@@ -234,7 +222,6 @@ func TestParseOrOperator(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			// Check $or field exists
 			orValue, exists := result["$or"]
 			if !exists {
 				t.Fatalf("Expected $or field not found")
@@ -250,7 +237,6 @@ func TestParseOrOperator(t *testing.T) {
 				t.Fatalf("Expected %d OR conditions, got %d", len(expectedOr), len(orArray))
 			}
 
-			// Check each OR condition
 			for i, expectedCondition := range expectedOr {
 				if i >= len(orArray) {
 					t.Fatalf("Missing OR condition at index %d", i)
@@ -317,7 +303,6 @@ func TestParseNotOperator(t *testing.T) {
 				if actualValue, exists := result[field]; !exists {
 					t.Fatalf("Expected field %s not found", field)
 				} else {
-					// Handle $ne comparison
 					if expectedMap, ok := expectedValue.(bson.M); ok {
 						if actualMap, ok := actualValue.(bson.M); ok {
 							if expectedMap["$ne"] != actualMap["$ne"] {
@@ -349,9 +334,8 @@ func TestParseComplexOperators(t *testing.T) {
 			expected: bson.M{
 				"$or": []bson.M{
 					{"name": "john"},
-					{"name": "jane"},
+					{"name": "jane", "age": 25.0},
 				},
-				"age": 25.0,
 			},
 		},
 		{
@@ -367,10 +351,9 @@ func TestParseComplexOperators(t *testing.T) {
 			description: "Wildcard OR with AND and NOT",
 			expected: bson.M{
 				"$or": []bson.M{
-					{"name": bson.M{"$regex": "jo.*", "$options": "i"}},
-					{"name": bson.M{"$regex": "ja.*", "$options": "i"}},
+					{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
+					{"name": bson.M{"$regex": "^ja.*", "$options": "i"}, "age": bson.M{"$ne": 18.0}},
 				},
-				"age": bson.M{"$ne": 18.0},
 			},
 		},
 	}
@@ -382,12 +365,10 @@ func TestParseComplexOperators(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			// Basic structure check
 			if len(result) < 1 {
 				t.Fatalf("Expected at least 1 field, got %d", len(result))
 			}
 
-			// Check for $or if expected
 			if expectedOr, hasOr := test.expected["$or"]; hasOr {
 				if actualOr, exists := result["$or"]; !exists {
 					t.Fatalf("Expected $or field not found")
@@ -400,16 +381,14 @@ func TestParseComplexOperators(t *testing.T) {
 				}
 			}
 
-			// Check for $ne (NOT) conditions
 			for field, expectedValue := range test.expected {
 				if field == "$or" {
-					continue // Already checked above
+					continue
 				}
 
 				if actualValue, exists := result[field]; !exists {
 					t.Fatalf("Expected field %s not found", field)
 				} else {
-					// Handle $ne comparison
 					if expectedMap, ok := expectedValue.(bson.M); ok {
 						if actualMap, ok := actualValue.(bson.M); ok {
 							if expectedMap["$ne"] != actualMap["$ne"] {
@@ -427,7 +406,6 @@ func TestParseComplexOperators(t *testing.T) {
 	}
 }
 
-// Date query tests
 func TestParseDateQueries(t *testing.T) {
 	parser := New()
 
@@ -533,7 +511,6 @@ func TestParseDateQueries(t *testing.T) {
 				t.Fatalf("Expected field %s not found", field)
 			}
 
-			// Compare the values
 			if !compareBSONValues(actualValue, test.expected[field]) {
 				t.Fatalf("Expected %s=%v, got %s=%v", field, test.expected[field], field, actualValue)
 			}
@@ -579,12 +556,10 @@ func TestParseComplexDateQueries(t *testing.T) {
 				t.Fatalf("Parse should not return error, got: %v", err)
 			}
 
-			// Basic structure check
 			if len(result) < 1 {
 				t.Fatalf("Expected at least 1 field, got %d", len(result))
 			}
 
-			// Check each field
 			for field, expectedValue := range test.expected {
 				if actualValue, exists := result[field]; !exists {
 					t.Fatalf("Expected field %s not found", field)
@@ -603,8 +578,8 @@ func TestParseInvalidDateQueries(t *testing.T) {
 		"created_at:[invalid TO 2023-12-31]",
 		"created_at:[2023-01-01 TO invalid]",
 		"created_at:>invalid",
-		"created_at:[2023-01-01 TO 2023-12-31 TO 2024-01-01]", // Too many TO clauses
-		"created_at:[* TO *]",                                 // Both wildcards not allowed
+		"created_at:[2023-01-01 TO 2023-12-31 TO 2024-01-01]",
+		"created_at:[* TO *]",
 	}
 
 	for _, invalidQuery := range invalidQueries {
@@ -617,9 +592,177 @@ func TestParseInvalidDateQueries(t *testing.T) {
 	}
 }
 
-// Helper function to compare BSON values
+func TestParseParenthesesQueries(t *testing.T) {
+	parser := New()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "(name:john OR name:jane) AND age:25",
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"name": "john"},
+							{"name": "jane"},
+						},
+					},
+					{"age": 25.0},
+				},
+			},
+			desc: "grouped OR with AND",
+		},
+		{
+			input: "name:john OR (name:jane AND age:25)",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"name": "john"},
+					{"name": "jane", "age": 25.0},
+				},
+			},
+			desc: "OR with grouped AND",
+		},
+		{
+			input: "(name:john AND age:25) OR (name:jane AND age:30)",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"name": "john", "age": 25.0},
+					{"name": "jane", "age": 30.0},
+				},
+			},
+			desc: "grouped AND expressions with OR",
+		},
+		{
+			input: "NOT (name:john OR name:jane)",
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"name": bson.M{"$ne": "john"}},
+							{"name": bson.M{"$ne": "jane"}},
+						},
+					},
+				},
+			},
+			desc: "NOT with grouped OR",
+		},
+		{
+			input: "((name:john OR name:jane) AND age:25) OR status:active",
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"$and": []bson.M{
+							{
+								"$or": []bson.M{
+									{"name": "john"},
+									{"name": "jane"},
+								},
+							},
+							{"age": 25.0},
+						},
+					},
+					{"status": "active"},
+				},
+			},
+			desc: "nested parentheses",
+		},
+		{
+			input: "(name:jo* OR name:ja*) AND (age:25 OR age:30)",
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
+							{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"age": 25.0},
+							{"age": 30.0},
+						},
+					},
+				},
+			},
+			desc: "grouped wildcards and numbers",
+		},
+		{
+			input: "created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)",
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"status": "active"},
+							{"status": "pending"},
+						},
+					},
+					{
+						"created_at": bson.M{
+							"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+							"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+						},
+					},
+				},
+			},
+			desc: "date range with grouped status",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestDebugIncompleteExpression(t *testing.T) {
+	parser := New()
+
+	query := "(name:john AND)"
+	fmt.Printf("Testing: %s\n", query)
+	result, err := parser.Parse(query)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	} else {
+		fmt.Printf("Result: %+v\n", result)
+	}
+}
+
+func TestParseInvalidParenthesesQueries(t *testing.T) {
+	parser := New()
+
+	invalidQueries := []string{
+		"(name:john OR name:jane",      // unmatched opening parenthesis
+		"name:john OR name:jane)",      // unmatched closing parenthesis
+		"((name:john OR name:jane)",    // unmatched nested parentheses
+		"name:john OR name:jane))",     // extra closing parenthesis
+		"()",                           // empty parentheses
+		"(name:john AND)",              // incomplete expression in parentheses
+		"AND (name:john OR name:jane)", // AND at start
+		"(name:john OR name:jane) AND", // AND at end
+	}
+
+	for _, invalidQuery := range invalidQueries {
+		t.Run(invalidQuery, func(t *testing.T) {
+			_, err := parser.Parse(invalidQuery)
+			if err == nil {
+				t.Fatalf("Expected error for invalid parentheses query '%s', got none", invalidQuery)
+			}
+		})
+	}
+}
+
 func compareBSONValues(actual, expected interface{}) bool {
-	// Handle time.Time comparison
 	if actualTime, ok := actual.(time.Time); ok {
 		if expectedTime, ok := expected.(time.Time); ok {
 			return actualTime.Equal(expectedTime)
@@ -627,7 +770,6 @@ func compareBSONValues(actual, expected interface{}) bool {
 		return false
 	}
 
-	// Handle bson.M comparison
 	if actualMap, ok := actual.(bson.M); ok {
 		if expectedMap, ok := expected.(bson.M); ok {
 			if len(actualMap) != len(expectedMap) {
@@ -641,13 +783,12 @@ func compareBSONValues(actual, expected interface{}) bool {
 				if !compareBSONValues(actualValue, expectedValue) {
 					return false
 				}
-				return true
 			}
+			return true
 		}
 		return false
 	}
 
-	// Handle []bson.M comparison
 	if actualArray, ok := actual.([]bson.M); ok {
 		if expectedArray, ok := expected.([]bson.M); ok {
 			if len(actualArray) != len(expectedArray) {
@@ -663,6 +804,5 @@ func compareBSONValues(actual, expected interface{}) bool {
 		return false
 	}
 
-	// Default comparison
 	return actual == expected
 }
