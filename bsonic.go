@@ -11,7 +11,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Token types for parsing
 type TokenType int
 
 const (
@@ -52,7 +51,6 @@ type Token struct {
 	Value string
 }
 
-// Helper functions for tokenization
 func (p *Parser) createToken(tokenType TokenType, value string) Token {
 	return Token{Type: tokenType, Value: value}
 }

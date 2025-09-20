@@ -113,12 +113,7 @@ query, _ := parser.Parse("name:jo* OR name:ja* AND NOT age:18")
 
 ### Grouping Logic with Parentheses
 
-Bsonic supports parentheses for grouping expressions and controlling operator precedence, enabling complex query logic. Parentheses allow you to:
-
-- **Control precedence**: Override the default operator precedence (NOT > AND > OR)
-- **Group conditions**: Create logical groups that are evaluated together
-- **Build complex queries**: Combine multiple operators in sophisticated ways
-- **Nest expressions**: Create deeply nested query structures
+Bsonic supports parentheses for grouping expressions and controlling operator precedence.
 
 **Operator Precedence (without parentheses):**
 1. `NOT` (highest precedence)
@@ -155,7 +150,7 @@ query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:acti
 // BSON: map[$and:[map[$or:[map[status:active] map[status:pending]]] map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC]]]]
 ```
 
-**Note:** Parentheses must be properly matched. Invalid patterns like `(name:john OR name:jane` (unmatched opening parenthesis) or `name:john OR name:jane)` (unmatched closing parenthesis) will result in parsing errors.
+**Note:** Parentheses must be properly matched.
 
 ### Date Queries
 
@@ -233,13 +228,17 @@ query, _ := parser.Parse("name:john")
 
 This library includes comprehensive integration tests that run against a real MongoDB instance. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md) for details on how to run integration tests locally.
 
+- [Integration Testing Guide](INTEGRATION_TESTING.md) - Setup and run integration tests
+- [Integration Troubleshooting](INTEGRATION_TROUBLESHOOTING.md) - Common issues and solutions
+- [Detailed Integration Guide](integration/README.md) - Advanced integration testing
+
 ## Examples
 
 Check out the [examples](examples/) directory for more detailed usage examples.
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please open an issue or pull request on GitHub.
 
 ## License
 
@@ -248,3 +247,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Dependencies
 
 See [DEPENDENCIES.md](DEPENDENCIES.md) for information about required and optional dependencies.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes and new features.

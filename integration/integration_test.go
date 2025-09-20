@@ -87,12 +87,12 @@ func TestBasicQueries(t *testing.T) {
 		{
 			name:     "active status match",
 			query:    "active:true",
-			expected: 4, // Now properly handles boolean values
+			expected: 4, // BSON library correctly parses boolean values
 		},
 		{
 			name:     "age match",
 			query:    "age:30",
-			expected: 1, // Now properly handles numeric values
+			expected: 1, // BSON library correctly parses numeric values
 		},
 	}
 
@@ -327,12 +327,12 @@ func TestProductQueries(t *testing.T) {
 		{
 			name:     "in stock products",
 			query:    "in_stock:true",
-			expected: 2, // Now properly handles boolean values
+			expected: 2, // BSON library correctly parses boolean values
 		},
 		{
 			name:     "price range (exact match)",
 			query:    "price:99.99",
-			expected: 1, // Now properly handles numeric values
+			expected: 1, // BSON library correctly parses numeric values
 		},
 		{
 			name:     "tag contains 'gaming'",
