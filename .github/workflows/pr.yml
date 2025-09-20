@@ -8,6 +8,10 @@ jobs:
   pr-checks:
     name: PR Checks
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        go-version: [1.25]
     
     steps:
     - name: Checkout code
