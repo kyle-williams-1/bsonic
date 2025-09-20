@@ -48,7 +48,7 @@ on:
     branches: [ main ]      # Run when creating PRs to main
 ```
 **What it does**: 
-- Tests on Go 1.22, 1.23, 1.24, 1.25
+- Tests on Go 1.25
 - Lints your code
 - Builds for different platforms
 - Scans for security issues

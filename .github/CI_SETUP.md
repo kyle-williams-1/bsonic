@@ -8,7 +8,7 @@ This document explains how to set up the GitHub Actions workflows for the bsonic
 - **Triggers**: Push to main/develop, Pull Requests
 - **Purpose**: Quick test feedback
 - **Features**:
-  - Tests on Go 1.22, 1.23, 1.24, 1.25
+  - Tests on Go 1.25
   - Caches dependencies
   - Runs tests with coverage
   - Uploads coverage to Codecov
@@ -17,7 +17,7 @@ This document explains how to set up the GitHub Actions workflows for the bsonic
 - **Triggers**: Push to main/develop, Pull Requests
 - **Purpose**: Full CI pipeline
 - **Features**:
-  - **Test Job**: Multi-version testing (Go 1.22-1.25)
+  - **Test Job**: Unit tests (Go 1.25)
   - **Lint Job**: Code quality checks with golangci-lint
   - **Build Job**: Cross-platform builds (Linux, macOS, Windows)
   - **Security Job**: Security scanning with Gosec
