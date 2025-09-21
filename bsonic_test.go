@@ -517,7 +517,7 @@ func TestParseParenthesesQueries(t *testing.T) {
 		{
 			input: "NOT (name:john OR name:jane)",
 			expected: bson.M{
-				"$or": []bson.M{
+				"$and": []bson.M{
 					{"name": bson.M{"$ne": "john"}},
 					{"name": bson.M{"$ne": "jane"}},
 				},

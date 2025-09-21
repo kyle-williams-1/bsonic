@@ -319,6 +319,15 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 			tokens = append(tokens, Token{Type: TokenRParen, Value: ")"})
 			i++
 		default:
+			// Check if this starts with NOT
+			remaining := part[i:]
+			if strings.HasPrefix(strings.ToUpper(remaining), "NOT ") {
+				// This is a NOT operation
+				tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
+				i += 4 // Skip "NOT "
+				continue
+			}
+
 			// Parse field:value
 			// Find the first colon that separates field from value
 			// The field name should not contain colons, but the value can
@@ -354,8 +363,8 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 					inBrackets = true
 				} else if !inQuotes && char == ']' {
 					inBrackets = false
-				} else if !inQuotes && !inBrackets && (char == '(' || char == ')') {
-					// Only break on parentheses, not on spaces
+				} else if !inQuotes && !inBrackets && char == ')' {
+					// Only break on closing parentheses, not on spaces or opening parentheses
 					// Spaces are allowed in values
 					break
 				}
@@ -532,71 +541,148 @@ func (p *Parser) astToBSON(node *Node) bson.M {
 	case NodeFieldValue:
 		return bson.M{node.Field: node.Value}
 	case NodeAND:
-		var andConditions []bson.M
-		directFields := bson.M{}
-
-		for _, child := range node.Children {
-			childBSON := p.astToBSON(child)
-
-			// If child has $or, add it to andConditions
-			if orClause, hasOr := childBSON["$or"]; hasOr {
-				andConditions = append(andConditions, bson.M{"$or": orClause})
-			} else {
-				// Merge direct fields
-				for k, v := range childBSON {
-					directFields[k] = v
-				}
-			}
-		}
-
-		// If we have both direct fields and $or conditions, combine them
-		if len(directFields) > 0 && len(andConditions) > 0 {
-			andConditions = append(andConditions, directFields)
-			return bson.M{"$and": andConditions}
-		} else if len(andConditions) > 0 {
-			return bson.M{"$and": andConditions}
-		} else {
-			return directFields
-		}
+		return p.handleAndNode(node)
 	case NodeOR:
-		var conditions []bson.M
-		for _, child := range node.Children {
-			conditions = append(conditions, p.astToBSON(child))
-		}
-		return bson.M{"$or": conditions}
+		return p.handleOrNode(node)
 	case NodeNOT:
-		if len(node.Children) != 1 {
-			return bson.M{}
-		}
-		childBSON := p.astToBSON(node.Children[0])
-
-		// If the child is an OR expression, we need to negate each condition
-		if orClause, hasOr := childBSON["$or"]; hasOr {
-			var negatedConditions []bson.M
-			for _, condition := range orClause.([]bson.M) {
-				negatedCondition := bson.M{}
-				for k, v := range condition {
-					negatedCondition[k] = bson.M{"$ne": v}
-				}
-				negatedConditions = append(negatedConditions, negatedCondition)
-			}
-			return bson.M{"$or": negatedConditions}
-		}
-
-		// For other cases, negate each field
-		result := bson.M{}
-		for k, v := range childBSON {
-			result[k] = bson.M{"$ne": v}
-		}
-		return result
+		return p.handleNotNode(node)
 	case NodeGroup:
-		if len(node.Children) != 1 {
-			return bson.M{}
-		}
-		return p.astToBSON(node.Children[0])
+		return p.handleGroupNode(node)
 	default:
 		return bson.M{}
 	}
+}
+
+// handleAndNode processes AND operations in the AST
+func (p *Parser) handleAndNode(node *Node) bson.M {
+	var andConditions []bson.M
+	directFields := bson.M{}
+
+	for _, child := range node.Children {
+		childBSON := p.astToBSON(child)
+
+		// Handle different types of child conditions
+		if orClause, hasOr := childBSON["$or"]; hasOr {
+			andConditions = append(andConditions, bson.M{"$or": orClause})
+		} else if andClause, hasAnd := childBSON["$and"]; hasAnd {
+			andConditions = append(andConditions, bson.M{"$and": andClause})
+		} else if p.hasConflictingOperators(childBSON, directFields) {
+			// This child has operators or field conflicts, add it as a separate condition
+			andConditions = append(andConditions, childBSON)
+		} else {
+			// Merge direct fields
+			for k, v := range childBSON {
+				directFields[k] = v
+			}
+		}
+	}
+
+	return p.combineAndConditions(andConditions, directFields)
+}
+
+// handleOrNode processes OR operations in the AST
+func (p *Parser) handleOrNode(node *Node) bson.M {
+	var conditions []bson.M
+	for _, child := range node.Children {
+		conditions = append(conditions, p.astToBSON(child))
+	}
+	return bson.M{"$or": conditions}
+}
+
+// handleNotNode processes NOT operations in the AST
+func (p *Parser) handleNotNode(node *Node) bson.M {
+	if len(node.Children) != 1 {
+		return bson.M{}
+	}
+	childBSON := p.astToBSON(node.Children[0])
+
+	// Handle NOT with OR expressions using De Morgan's law
+	if orClause, hasOr := childBSON["$or"]; hasOr {
+		return p.negateOrExpression(orClause.([]bson.M))
+	}
+
+	// Handle NOT with AND expressions using De Morgan's law
+	if andClause, hasAnd := childBSON["$and"]; hasAnd {
+		return p.negateAndExpression(andClause.([]bson.M))
+	}
+
+	// For field:value pairs, negate each field
+	return p.negateFieldValuePairs(childBSON)
+}
+
+// handleGroupNode processes parenthesized groups in the AST
+func (p *Parser) handleGroupNode(node *Node) bson.M {
+	if len(node.Children) != 1 {
+		return bson.M{}
+	}
+	return p.astToBSON(node.Children[0])
+}
+
+// hasConflictingOperators checks if a BSON condition has operators that would conflict with direct field merging
+func (p *Parser) hasConflictingOperators(childBSON bson.M, directFields bson.M) bool {
+	for field, v := range childBSON {
+		if vMap, ok := v.(bson.M); ok {
+			// Check for MongoDB query operators that would conflict with direct field merging
+			// Only $or and $and are conflicting - $ne, $gt, $lt, etc. can be merged directly
+			for key := range vMap {
+				if key == "$or" || key == "$and" {
+					return true
+				}
+			}
+		}
+		// Check if this field already exists in directFields
+		if _, exists := directFields[field]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+// combineAndConditions combines direct fields and other conditions for AND operations
+func (p *Parser) combineAndConditions(andConditions []bson.M, directFields bson.M) bson.M {
+	if len(directFields) > 0 && len(andConditions) > 0 {
+		andConditions = append(andConditions, directFields)
+		return bson.M{"$and": andConditions}
+	} else if len(andConditions) > 0 {
+		return bson.M{"$and": andConditions}
+	} else {
+		return directFields
+	}
+}
+
+// negateOrExpression negates an OR expression using De Morgan's law: NOT (A OR B) = (NOT A) AND (NOT B)
+func (p *Parser) negateOrExpression(orConditions []bson.M) bson.M {
+	var negatedConditions []bson.M
+	for _, condition := range orConditions {
+		negatedCondition := bson.M{}
+		for k, v := range condition {
+			negatedCondition[k] = bson.M{"$ne": v}
+		}
+		negatedConditions = append(negatedConditions, negatedCondition)
+	}
+	return bson.M{"$and": negatedConditions}
+}
+
+// negateAndExpression negates an AND expression using De Morgan's law: NOT (A AND B) = (NOT A) OR (NOT B)
+func (p *Parser) negateAndExpression(andConditions []bson.M) bson.M {
+	var negatedConditions []bson.M
+	for _, condition := range andConditions {
+		negatedCondition := bson.M{}
+		for k, v := range condition {
+			negatedCondition[k] = bson.M{"$ne": v}
+		}
+		negatedConditions = append(negatedConditions, negatedCondition)
+	}
+	return bson.M{"$or": negatedConditions}
+}
+
+// negateFieldValuePairs negates field:value pairs by adding $ne operators
+func (p *Parser) negateFieldValuePairs(childBSON bson.M) bson.M {
+	result := bson.M{}
+	for k, v := range childBSON {
+		result[k] = bson.M{"$ne": v}
+	}
+	return result
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax

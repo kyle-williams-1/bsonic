@@ -325,11 +325,15 @@ func TestParenthesesGrouping(t *testing.T) {
 			expected: 2, // Both John and Jane are active
 		},
 		{
-			name:     "NOT with grouped expression",
-			query:    "NOT (role:admin OR role:moderator)",
-			expected: 5, // BUG: Library generates incorrect BSON - matches all documents
+			name:     "simple grouping - OR with AND - one not active",
+			query:    "(name:John Doe OR name:Bob Johnson) AND active:true",
+			expected: 1, // Only John is active
 		},
 		{
+			name:     "NOT with grouped expression",
+			query:    "NOT (role:admin OR role:moderator)",
+			expected: 2, // Jane Smith and Bob Johnson (neither admin nor moderator)
+		}, {
 			name:     "nested parentheses",
 			query:    "((name:John Doe OR name:Jane Smith) AND active:true) OR role:moderator",
 			expected: 3, // John, Jane (active) + Bob (moderator)
@@ -342,7 +346,7 @@ func TestParenthesesGrouping(t *testing.T) {
 		{
 			name:     "grouped NOT operations",
 			query:    "(NOT role:admin) AND (NOT name:Bob Johnson)",
-			expected: 0, // BUG: Library generates incorrect BSON - no matches
+			expected: 2, // Alice Brown and Jane Smith (not admin and not Bob)
 		},
 		{
 			name:     "multiple OR groups with AND",
