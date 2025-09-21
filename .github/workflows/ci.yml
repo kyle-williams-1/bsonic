@@ -110,6 +110,10 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
     env:
       GO111MODULE: on
     
@@ -134,3 +138,5 @@ jobs:
       with:
         # Path to SARIF file relative to the root of the repository
         sarif_file: results.sarif
+        # Category to distinguish this scan from others
+        category: gosec-security-scan
