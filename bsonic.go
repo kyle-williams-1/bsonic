@@ -320,75 +320,122 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 			i++
 		default:
 			// Check if this starts with NOT
-			remaining := part[i:]
-			if strings.HasPrefix(strings.ToUpper(remaining), "NOT ") {
-				// This is a NOT operation
+			if p.isNotOperation(part[i:]) {
 				tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
 				i += 4 // Skip "NOT "
 				continue
 			}
 
-			// Parse field:value
-			// Find the first colon that separates field from value
-			// The field name should not contain colons, but the value can
-			colonIndex := strings.Index(part[i:], ":")
-			if colonIndex == -1 {
-				return nil, errors.New("invalid query format: expected field:value")
-			}
-
-			colonIndex += i
-			field := strings.TrimSpace(part[i:colonIndex])
-			valueStart := colonIndex + 1
-
-			// Validate field name (cannot be empty)
-			if field == "" {
-				return nil, errors.New("invalid query format: field name cannot be empty")
-			}
-
-			// Find the end of the value
-			valueEnd := valueStart
-			inQuotes := false
-			quoteChar := byte(0)
-			inBrackets := false
-
-			for valueEnd < len(part) {
-				char := part[valueEnd]
-
-				if !inQuotes && !inBrackets && (char == '"' || char == '\'') {
-					inQuotes = true
-					quoteChar = char
-				} else if inQuotes && char == quoteChar {
-					inQuotes = false
-				} else if !inQuotes && char == '[' {
-					inBrackets = true
-				} else if !inQuotes && char == ']' {
-					inBrackets = false
-				} else if !inQuotes && !inBrackets && char == ')' {
-					// Only break on closing parentheses, not on spaces or opening parentheses
-					// Spaces are allowed in values
-					break
-				}
-				valueEnd++
-			}
-
-			// Validate value (cannot be empty)
-			value := strings.TrimSpace(part[valueStart:valueEnd])
-			if value == "" {
-				return nil, errors.New("invalid query format: value cannot be empty")
-			}
-
-			// Parse the value to validate it
-			_, err := p.parseValue(p.unquote(value))
+			// Parse field:value pair
+			field, value, newPos, err := p.parseFieldValuePair(part, i)
 			if err != nil {
 				return nil, err
 			}
 
 			tokens = append(tokens, Token{Type: TokenField, Value: field + ":" + value})
-			i = valueEnd
+			i = newPos
 		}
 	}
 
 	return tokens, nil
+}
+
+// isNotOperation checks if the remaining string starts with "NOT "
+func (p *Parser) isNotOperation(remaining string) bool {
+	return strings.HasPrefix(strings.ToUpper(remaining), "NOT ")
+}
+
+// parseFieldValuePair parses a field:value pair from the given position
+func (p *Parser) parseFieldValuePair(part string, start int) (string, string, int, error) {
+	// Find the first colon that separates field from value
+	colonIndex := strings.Index(part[start:], ":")
+	if colonIndex == -1 {
+		return "", "", 0, errors.New("invalid query format: expected field:value")
+	}
+
+	colonIndex += start
+	field := strings.TrimSpace(part[start:colonIndex])
+	valueStart := colonIndex + 1
+
+	// Validate field name (cannot be empty)
+	if field == "" {
+		return "", "", 0, errors.New("invalid query format: field name cannot be empty")
+	}
+
+	// Find the end of the value
+	valueEnd, err := p.findValueEnd(part, valueStart)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	// Validate value (cannot be empty)
+	value := strings.TrimSpace(part[valueStart:valueEnd])
+	if value == "" {
+		return "", "", 0, errors.New("invalid query format: value cannot be empty")
+	}
+
+	// Parse the value to validate it
+	_, err = p.parseValue(p.unquote(value))
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	return field, value, valueEnd, nil
+}
+
+// findValueEnd finds the end position of a value, handling quotes and brackets
+func (p *Parser) findValueEnd(part string, valueStart int) (int, error) {
+	valueEnd := valueStart
+	inQuotes := false
+	quoteChar := byte(0)
+	inBrackets := false
+
+	for valueEnd < len(part) {
+		char := part[valueEnd]
+
+		if p.shouldStartQuote(char, inQuotes, inBrackets) {
+			inQuotes = true
+			quoteChar = char
+		} else if p.shouldEndQuote(char, inQuotes, quoteChar) {
+			inQuotes = false
+		} else if p.shouldStartBrackets(char, inQuotes) {
+			inBrackets = true
+		} else if p.shouldEndBrackets(char, inQuotes) {
+			inBrackets = false
+		} else if p.shouldEndValue(char, inQuotes, inBrackets) {
+			// Only break on closing parentheses, not on spaces or opening parentheses
+			// Spaces are allowed in values
+			break
+		}
+		valueEnd++
+	}
+
+	return valueEnd, nil
+}
+
+// shouldStartQuote determines if a character should start a quoted string
+func (p *Parser) shouldStartQuote(char byte, inQuotes, inBrackets bool) bool {
+	return !inQuotes && !inBrackets && (char == '"' || char == '\'')
+}
+
+// shouldEndQuote determines if a character should end a quoted string
+func (p *Parser) shouldEndQuote(char byte, inQuotes bool, quoteChar byte) bool {
+	return inQuotes && char == quoteChar
+}
+
+// shouldStartBrackets determines if a character should start brackets
+func (p *Parser) shouldStartBrackets(char byte, inQuotes bool) bool {
+	return !inQuotes && char == '['
+}
+
+// shouldEndBrackets determines if a character should end brackets
+func (p *Parser) shouldEndBrackets(char byte, inQuotes bool) bool {
+	return !inQuotes && char == ']'
+}
+
+// shouldEndValue determines if a character should end the value parsing
+func (p *Parser) shouldEndValue(char byte, inQuotes, inBrackets bool) bool {
+	return !inQuotes && !inBrackets && char == ')'
 }
 
 // parseExpression parses tokens into an AST with proper operator precedence
@@ -688,34 +735,18 @@ func (p *Parser) negateFieldValuePairs(childBSON bson.M) bson.M {
 // parseValue parses a value string, handling wildcards, dates, and special syntax
 func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 	// Check for date range queries: [start TO end]
-	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
+	if p.isDateRange(valueStr) {
 		return p.parseDateRange(valueStr)
 	}
 
 	// Check for date comparison operators: >date, <date, >=date, <=date
-	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
+	if p.isDateComparison(valueStr) {
 		return p.parseDateComparison(valueStr)
 	}
 
 	// Check for wildcards
 	if strings.Contains(valueStr, "*") {
-		pattern := strings.ReplaceAll(valueStr, "*", ".*")
-
-		// Add proper anchoring based on wildcard position
-		if strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*") {
-			// *J* - contains pattern
-		} else if strings.HasPrefix(valueStr, "*") {
-			// *J - ends with pattern
-			pattern = pattern + "$"
-		} else if strings.HasSuffix(valueStr, "*") {
-			// J* - starts with pattern
-			pattern = "^" + pattern
-		} else {
-			// J*K - starts and ends with specific patterns
-			pattern = "^" + pattern + "$"
-		}
-
-		return bson.M{"$regex": pattern, "$options": "i"}, nil
+		return p.parseWildcard(valueStr)
 	}
 
 	// Try to parse as a date
@@ -729,15 +760,73 @@ func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 	}
 
 	// Check if it's a boolean
-	if valueStr == "true" {
-		return true, nil
-	}
-	if valueStr == "false" {
-		return false, nil
+	if p.isBoolean(valueStr) {
+		return p.parseBoolean(valueStr)
 	}
 
 	// Default to string
 	return valueStr, nil
+}
+
+// isDateRange checks if the value string is a date range query
+func (p *Parser) isDateRange(valueStr string) bool {
+	return strings.HasPrefix(valueStr, "[") &&
+		strings.HasSuffix(valueStr, "]") &&
+		strings.Contains(strings.ToUpper(valueStr), " TO ")
+}
+
+// isDateComparison checks if the value string is a date comparison operator
+func (p *Parser) isDateComparison(valueStr string) bool {
+	return strings.HasPrefix(valueStr, ">=") ||
+		strings.HasPrefix(valueStr, "<=") ||
+		strings.HasPrefix(valueStr, ">") ||
+		strings.HasPrefix(valueStr, "<")
+}
+
+// isBoolean checks if the value string is a boolean
+func (p *Parser) isBoolean(valueStr string) bool {
+	return valueStr == "true" || valueStr == "false"
+}
+
+// parseBoolean parses a boolean value
+func (p *Parser) parseBoolean(valueStr string) (bool, error) {
+	return valueStr == "true", nil
+}
+
+// parseWildcard parses a wildcard pattern and returns a regex BSON query
+func (p *Parser) parseWildcard(valueStr string) (bson.M, error) {
+	pattern := strings.ReplaceAll(valueStr, "*", ".*")
+
+	// Add proper anchoring based on wildcard position
+	if p.isContainsPattern(valueStr) {
+		// *J* - contains pattern
+	} else if p.isEndsWithPattern(valueStr) {
+		// *J - ends with pattern
+		pattern = pattern + "$"
+	} else if p.isStartsWithPattern(valueStr) {
+		// J* - starts with pattern
+		pattern = "^" + pattern
+	} else {
+		// J*K - starts and ends with specific patterns
+		pattern = "^" + pattern + "$"
+	}
+
+	return bson.M{"$regex": pattern, "$options": "i"}, nil
+}
+
+// isContainsPattern checks if the pattern is a contains pattern (*J*)
+func (p *Parser) isContainsPattern(valueStr string) bool {
+	return strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
+}
+
+// isEndsWithPattern checks if the pattern is an ends with pattern (*J)
+func (p *Parser) isEndsWithPattern(valueStr string) bool {
+	return strings.HasPrefix(valueStr, "*") && !strings.HasSuffix(valueStr, "*")
+}
+
+// isStartsWithPattern checks if the pattern is a starts with pattern (J*)
+func (p *Parser) isStartsWithPattern(valueStr string) bool {
+	return !strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
 }
 
 // parseDateRange parses date range queries like [2023-01-01 TO 2023-12-31] or [2023-01-01 TO *]
