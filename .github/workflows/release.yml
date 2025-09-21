@@ -9,6 +9,10 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        go-version: [1.25.1]
     
     steps:
     - name: Checkout code

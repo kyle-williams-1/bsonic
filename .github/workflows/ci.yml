@@ -58,6 +58,10 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     
+    strategy:
+      matrix:
+        go-version: [1.25.1]
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -79,6 +83,7 @@ jobs:
     
     strategy:
       matrix:
+        go-version: [1.25.1]
         goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
         exclude:
@@ -116,11 +121,13 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
-  
+
     - name: Run Gosec Security Scanner
       uses: securego/gosec@master
       with:
         # Gosec findings are reported via SARIF for GitHub Security, not as workflow failures.
+        args: '-fmt sarif -out results.sarif ./...'
+    
     - name: Upload SARIF file
       uses: github/codeql-action/upload-sarif@v2
       with:
