@@ -127,6 +127,7 @@ jobs:
       with:
         # Gosec findings are reported via SARIF for GitHub Security, not as workflow failures.
         args: '-fmt sarif -out results.sarif ./...'
+      continue-on-error: true
     
     - name: Upload SARIF file
       uses: github/codeql-action/upload-sarif@v2
