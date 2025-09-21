@@ -8,8 +8,6 @@ import (
 )
 
 func main() {
-	parser := bsonic.New()
-
 	// Example queries
 	queries := []string{
 		"name:john",
@@ -48,7 +46,7 @@ func main() {
 	for _, queryStr := range queries {
 		fmt.Printf("Query: %s\n", queryStr)
 
-		query, err := parser.Parse(queryStr)
+		query, err := bsonic.Parse(queryStr)
 		if err != nil {
 			log.Printf("Error parsing query '%s': %v", queryStr, err)
 			continue
