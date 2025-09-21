@@ -140,6 +140,13 @@ func New() *Parser {
 }
 
 // Parse converts a Lucene-style query string into a BSON document.
+// This is the recommended way to parse queries for most use cases.
+func Parse(query string) (bson.M, error) {
+	parser := &Parser{}
+	return parser.Parse(query)
+}
+
+// Parse converts a Lucene-style query string into a BSON document.
 // The parsing process follows these steps:
 // 1. Tokenize the query string into tokens (field:value pairs, operators, parentheses)
 // 2. Validate that parentheses are properly matched

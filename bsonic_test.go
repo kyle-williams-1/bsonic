@@ -15,6 +15,19 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestParsePackageLevel(t *testing.T) {
+	// Test the new package-level Parse function
+	query, err := bsonic.Parse("name:john")
+	if err != nil {
+		t.Fatalf("Parse should not return error, got: %v", err)
+	}
+
+	expected := bson.M{"name": "john"}
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
+	}
+}
+
 func TestParseEmptyQuery(t *testing.T) {
 	parser := bsonic.New()
 

@@ -48,10 +48,8 @@ import (
 )
 
 func main() {
-    parser := bsonic.New()
-    
-    // Parse a simple query
-    query, err := parser.Parse("name:john AND age:25")
+    // Parse a simple query using the package-level function
+    query, err := bsonic.Parse("name:john AND age:25")
     if err != nil {
         log.Fatal(err)
     }
@@ -61,35 +59,44 @@ func main() {
 }
 ```
 
+### Alternative API (Backward Compatible)
+
+For advanced usage or when you need to reuse parser instances:
+
+```go
+parser := bsonic.New()
+query, err := parser.Parse("name:john AND age:25")
+```
+
 ## Query Syntax
 
 ### Basic Field Matching
 
 ```go
 // Exact match
-query, _ := parser.Parse("name:john")
+query, _ := bsonic.Parse("name:john")
 // BSON: map[name:john]
 
 // Wildcard patterns
-query, _ := parser.Parse("name:jo*")
+query, _ := bsonic.Parse("name:jo*")
 // BSON: map[name:map[$regex:jo.* $options:i]]
 
 // Quoted values with spaces
-query, _ := parser.Parse(`name:"john doe"`)
+query, _ := bsonic.Parse(`name:"john doe"`)
 // BSON: map[name:john doe]
 ```
 
 ### Dot Notation for Nested Fields
 
 ```go
-query, _ := parser.Parse("user.profile.email:john@example.com")
+query, _ := bsonic.Parse("user.profile.email:john@example.com")
 // BSON: map[user.profile.email:john@example.com]
 ```
 
 ### Array Field Queries
 
 ```go
-query, _ := parser.Parse("tags:mongodb")
+query, _ := bsonic.Parse("tags:mongodb")
 // BSON: map[tags:mongodb]
 ```
 
@@ -97,19 +104,19 @@ query, _ := parser.Parse("tags:mongodb")
 
 ```go
 // AND operation
-query, _ := parser.Parse("name:john AND age:25")
+query, _ := bsonic.Parse("name:john AND age:25")
 // BSON: map[age:25 name:john]
 
 // OR operation
-query, _ := parser.Parse("name:john OR name:jane")
+query, _ := bsonic.Parse("name:john OR name:jane")
 // BSON: map[$or:[map[name:john] map[name:jane]]]
 
 // NOT operation
-query, _ := parser.Parse("name:john AND NOT age:25")
+query, _ := bsonic.Parse("name:john AND NOT age:25")
 // BSON: map[age:map[$ne:25] name:john]
 
 // Complex combinations
-query, _ := parser.Parse("name:jo* OR name:ja* AND NOT age:18")
+query, _ := bsonic.Parse("name:jo* OR name:ja* AND NOT age:18")
 // BSON: map[$or:[map[name:map[$regex:jo.* $options:i]] map[name:map[$regex:ja.* $options:i]]] age:map[$ne:18]]
 ```
 
@@ -124,31 +131,31 @@ Bsonic supports parentheses for grouping expressions and controlling operator pr
 
 ```go
 // Grouped OR with AND
-query, _ := parser.Parse("(name:john OR name:jane) AND age:25")
+query, _ := bsonic.Parse("(name:john OR name:jane) AND age:25")
 // BSON: map[$and:[map[$or:[map[name:john] map[name:jane]]] map[age:25]]]
 
 // OR with grouped AND
-query, _ := parser.Parse("name:john OR (name:jane AND age:25)")
+query, _ := bsonic.Parse("name:john OR (name:jane AND age:25)")
 // BSON: map[$or:[map[name:john] map[name:jane age:25]]]
 
 // Grouped AND expressions with OR
-query, _ := parser.Parse("(name:john AND age:25) OR (name:jane AND age:30)")
+query, _ := bsonic.Parse("(name:john AND age:25) OR (name:jane AND age:30)")
 // BSON: map[$or:[map[name:john age:25] map[name:jane age:30]]]
 
 // NOT with grouped OR
-query, _ := parser.Parse("NOT (name:john OR name:jane)")
+query, _ := bsonic.Parse("NOT (name:john OR name:jane)")
 // BSON: map[$or:[map[name:map[$ne:john]] map[name:map[$ne:jane]]]]
 
 // Nested parentheses
-query, _ := parser.Parse("((name:john OR name:jane) AND age:25) OR status:active")
+query, _ := bsonic.Parse("((name:john OR name:jane) AND age:25) OR status:active")
 // BSON: map[$or:[map[$and:[map[$or:[map[name:john] map[name:jane]]] map[age:25]]] map[status:active]]]
 
 // Grouped wildcards and numbers
-query, _ := parser.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
+query, _ := bsonic.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
 // BSON: map[$and:[map[$or:[map[name:map[$regex:jo.* $options:i]] map[name:map[$regex:ja.* $options:i]]]] map[$or:[map[age:25] map[age:30]]]]]
 
 // Date range with grouped status
-query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
+query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
 // BSON: map[$and:[map[$or:[map[status:active] map[status:pending]]] map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC]]]]
 ```
 
@@ -158,38 +165,38 @@ query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:acti
 
 ```go
 // Exact date
-query, _ := parser.Parse("created_at:2023-01-15")
+query, _ := bsonic.Parse("created_at:2023-01-15")
 // BSON: map[created_at:2023-01-15 00:00:00 +0000 UTC]
 
 // Date range
-query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31]")
+query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31]")
 // BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC]]
 
 // Date range with wildcards
-query, _ := parser.Parse("created_at:[2023-01-01 TO *]")
+query, _ := bsonic.Parse("created_at:[2023-01-01 TO *]")
 // BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC]]
 
-query, _ := parser.Parse("created_at:[* TO 2023-12-31]")
+query, _ := bsonic.Parse("created_at:[* TO 2023-12-31]")
 // BSON: map[created_at:map[$lte:2023-12-31 00:00:00 +0000 UTC]]
 
 // Date comparisons
-query, _ := parser.Parse("created_at:>2024-01-01")
+query, _ := bsonic.Parse("created_at:>2024-01-01")
 // BSON: map[created_at:map[$gt:2024-01-01 00:00:00 +0000 UTC]]
 
-query, _ := parser.Parse("created_at:<2023-12-31")
+query, _ := bsonic.Parse("created_at:<2023-12-31")
 // BSON: map[created_at:map[$lt:2023-12-31 00:00:00 +0000 UTC]]
 
-query, _ := parser.Parse("created_at:>=2024-01-01")
+query, _ := bsonic.Parse("created_at:>=2024-01-01")
 // BSON: map[created_at:map[$gte:2024-01-01 00:00:00 +0000 UTC]]
 
-query, _ := parser.Parse("created_at:<=2023-12-31")
+query, _ := bsonic.Parse("created_at:<=2023-12-31")
 // BSON: map[created_at:map[$lte:2023-12-31 00:00:00 +0000 UTC]]
 
 // Complex date queries
-query, _ := parser.Parse("created_at:[2023-01-01 TO 2023-12-31] AND status:active")
+query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND status:active")
 // BSON: map[created_at:map[$gte:2023-01-01 00:00:00 +0000 UTC $lte:2023-12-31 00:00:00 +0000 UTC] status:active]
 
-query, _ := parser.Parse("created_at:>2024-01-01 OR updated_at:<2023-01-01")
+query, _ := bsonic.Parse("created_at:>2024-01-01 OR updated_at:<2023-01-01")
 // BSON: map[$or:[map[created_at:map[$gt:2024-01-01 00:00:00 +0000 UTC]] map[updated_at:map[$lt:2023-01-01 00:00:00 +0000 UTC]]]]
 ```
 
