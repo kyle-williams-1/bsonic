@@ -30,3 +30,14 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Build output
+/bin/
+/dist/
+
+# Coverage reports
+coverage.html
+coverage.xml
+
+# Mac specific files
+.DS_Store
