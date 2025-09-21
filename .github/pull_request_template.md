@@ -11,25 +11,16 @@ Brief description of the changes in this PR.
 
 ## Testing
 - [ ] Tests pass locally
-- [ ] New tests added for new functionality
-- [ ] All existing tests still pass
 - [ ] Manual testing completed
 
-## Code Quality
+## Checklist
 - [ ] Code follows project style guidelines
 - [ ] Self-review completed
 - [ ] Code is properly commented
 - [ ] No linting errors
-
-## Checklist
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published
+- [ ] Documentation updated (if applicable)
+- [ ] New unit and integration tests added for new functionality
+- [ ] All existing tests still pass
 
 ## Related Issues
 Fixes #(issue number)

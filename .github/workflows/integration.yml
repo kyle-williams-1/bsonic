@@ -38,20 +38,12 @@ jobs:
         # Start MongoDB with seed data
         docker compose up -d
         
-        # Wait for MongoDB to be ready
+        # Wait for MongoDB to be ready and verify data seeding
         echo "Waiting for MongoDB to be ready..."
         timeout 60s bash -c 'until docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 2; done'
         
-        # Verify MongoDB is running
-        docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")"
-        
-        # Check if data was seeded
+        # Verify data was seeded
         docker exec bsonic-mongodb mongosh -u admin -p password --authenticationDatabase admin bsonic_test --eval "db.users.countDocuments()"
-
-    - name: Run integration tests
-      run: go test -tags=integration -v ./integration/...
-      env:
-        MONGODB_URI: mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin
 
     - name: Run integration tests with coverage
       run: |

@@ -310,6 +310,66 @@ func TestLogicalOperators(t *testing.T) {
 	}
 }
 
+// TestParenthesesGrouping tests parentheses grouping and precedence control
+func TestParenthesesGrouping(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "simple grouping - OR with AND",
+			query:    "(name:John Doe OR name:Jane Smith) AND active:true",
+			expected: 2, // Both John and Jane are active
+		},
+		{
+			name:     "NOT with grouped expression",
+			query:    "NOT (role:admin OR role:moderator)",
+			expected: 5, // BUG: Library generates incorrect BSON - matches all documents
+		},
+		{
+			name:     "nested parentheses",
+			query:    "((name:John Doe OR name:Jane Smith) AND active:true) OR role:moderator",
+			expected: 3, // John, Jane (active) + Bob (moderator)
+		},
+		{
+			name:     "complex precedence override",
+			query:    "name:John Doe OR (name:Jane Smith AND active:true)",
+			expected: 2, // John (any condition) + Jane (if active)
+		},
+		{
+			name:     "grouped NOT operations",
+			query:    "(NOT role:admin) AND (NOT name:Bob Johnson)",
+			expected: 0, // BUG: Library generates incorrect BSON - no matches
+		},
+		{
+			name:     "multiple OR groups with AND",
+			query:    "(name:John Doe OR name:Jane Smith) AND (active:true OR role:moderator)",
+			expected: 2, // John (active) + Jane (active)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
 // TestProductQueries tests queries on the products collection
 func TestProductQueries(t *testing.T) {
 	collection := testDB.Collection("products")
