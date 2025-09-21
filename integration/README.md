@@ -10,7 +10,7 @@ The integration testing setup includes:
 - **MongoDB Express** web interface for database inspection
 - **Seeded test data** with realistic use cases
 - **Comprehensive test suite** covering all library features
-- **Performance testing** to ensure queries execute efficiently
+- **Basic performance validation** to ensure queries execute within reasonable time (expanded performance testing planned for future releases)
 
 ## Quick Start
 
@@ -97,9 +97,8 @@ The integration tests use three collections with realistic data:
 - Complex combinations
 
 ### Performance Tests
-- Query execution time validation
-- Large dataset handling
-- Index utilization
+- **Current**: Basic query execution time validation (1-second timeout)
+- **Planned**: Large dataset handling, index utilization, memory usage analysis, and comprehensive benchmarking
 
 ## Development Workflow
 
@@ -114,6 +113,21 @@ go test -tags=integration ./integration/...
 # Stop containers when done
 docker-compose down
 ```
+
+### When Modifying Test Data
+If you need to update the seed data in `integration/init/01-seed-data.js`:
+
+```bash
+# Clean existing data and restart with new seed data
+make docker-clean
+make docker-up
+
+# Or manually:
+docker-compose down -v  # -v removes volumes
+docker-compose up -d --build
+```
+
+**Note**: The `--build` flag alone won't reseed data - you must remove the persistent volume first.
 
 ### For CI/CD
 ```bash
