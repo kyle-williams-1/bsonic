@@ -207,8 +207,13 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 	}
 
 	// Text search is disabled, parse as regular field query
+	// First, validate that this looks like a proper field query
+	if err := p.validateFieldQuery(query); err != nil {
+		return nil, err
+	}
+
 	// Tokenize the query
-	tokens, err := p.tokenize(query)
+	tokens, err := p.Tokenize(query)
 	if err != nil {
 		return nil, err
 	}
@@ -258,6 +263,76 @@ func (p *Parser) shouldUseTextSearch(query string) bool {
 	}
 
 	// If we get here, it's a simple text search query
+	return true
+}
+
+// validateFieldQuery validates that a query looks like a proper field query when text search is disabled
+func (p *Parser) validateFieldQuery(query string) error {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return nil
+	}
+
+	// Check if this looks like a text search query (no valid field:value pairs)
+	// If so, suggest enabling text search
+	if !p.HasValidFieldPairs(trimmed) {
+		return fmt.Errorf("query '%s' appears to be a text search query but text search is disabled. Consider using NewWithTextSearch() or SetSearchMode(SearchModeText) to enable text search", trimmed)
+	}
+
+	return nil
+}
+
+// HasValidFieldPairs checks if a query contains valid field:value pairs and operators
+func (p *Parser) HasValidFieldPairs(query string) bool {
+	// Use the existing tokenization logic to properly parse the query
+	tokens, err := p.Tokenize(query)
+	if err != nil {
+		return false
+	}
+
+	// Check if all tokens are valid (either field:value pairs or operators)
+	for _, token := range tokens {
+		if token.Type == TokenField {
+			// Validate that this is actually a proper field:value pair
+			if !p.IsValidFieldValuePair(token.Value) {
+				return false
+			}
+		} else if token.Type != TokenAND && token.Type != TokenOR && token.Type != TokenNOT &&
+			token.Type != TokenLParen && token.Type != TokenRParen {
+			// Only allow field:value pairs, operators, and parentheses
+			return false
+		}
+	}
+
+	return len(tokens) > 0
+}
+
+// IsValidFieldValuePair checks if a string is a valid field:value pair
+func (p *Parser) IsValidFieldValuePair(value string) bool {
+	// Find the first colon (field:value separator)
+	colonIndex := strings.Index(value, ":")
+	if colonIndex == -1 {
+		return false
+	}
+
+	field := strings.TrimSpace(value[:colonIndex])
+	val := strings.TrimSpace(value[colonIndex+1:])
+
+	// Both field and value must be non-empty
+	if field == "" || val == "" {
+		return false
+	}
+
+	// Field name must not contain spaces (it should be a single word)
+	if strings.Contains(field, " ") {
+		return false
+	}
+
+	// Value can contain colons (for dates/times) but should not start with a colon
+	if strings.HasPrefix(val, ":") {
+		return false
+	}
+
 	return true
 }
 
@@ -531,7 +606,7 @@ func (p *Parser) validateParentheses(tokens []Token) error {
 }
 
 // tokenize converts a query string into tokens
-func (p *Parser) tokenize(query string) ([]Token, error) {
+func (p *Parser) Tokenize(query string) ([]Token, error) {
 	query = strings.TrimSpace(query)
 	operatorPositions := p.findOperatorPositions(query)
 	return p.buildTokensFromPositions(query, operatorPositions)
