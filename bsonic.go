@@ -3,6 +3,7 @@ package bsonic
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ const (
 	TokenNOT
 	TokenLParen
 	TokenRParen
+	TokenTextSearch
 )
 
 // Logical operator definitions for tokenization
@@ -75,7 +77,8 @@ func (p *Parser) hasOperators(part string) bool {
 		}
 	}
 
-	// Check for operators before closing parentheses
+	// Check for operators before closing parentheses (e.g., "(name:john AND)")
+	// These are malformed queries that should be parsed as field queries, not text search
 	operatorWithParen := []string{" OR)", " AND)", " NOT)"}
 	for _, pattern := range operatorWithParen {
 		if strings.Contains(upperTrimmed, pattern) {
@@ -110,6 +113,7 @@ const (
 	NodeOR                         // Represents an OR operation between multiple conditions
 	NodeNOT                        // Represents a NOT operation (negation)
 	NodeGroup                      // Represents a parenthesized group of conditions
+	NodeTextSearch                 // Represents a text search query (e.g., "search terms")
 )
 
 // AST node for query representation
@@ -131,12 +135,39 @@ type Node struct {
 	Children []*Node     // Child nodes (used for operations like AND, OR, NOT, Group)
 }
 
+// SearchMode represents the type of search to perform
+type SearchMode int
+
+const (
+	// SearchModeDisabled disables text search functionality (default behavior)
+	SearchModeDisabled SearchMode = iota
+	// SearchModeText performs MongoDB text search using $text operator
+	SearchModeText
+)
+
 // Parser represents a Lucene-style query parser for MongoDB BSON filters.
-type Parser struct{}
+type Parser struct {
+	// SearchMode determines the type of search to perform
+	SearchMode SearchMode
+}
 
 // New creates a new BSON parser instance.
 func New() *Parser {
-	return &Parser{}
+	return &Parser{
+		SearchMode: SearchModeDisabled,
+	}
+}
+
+// NewWithTextSearch creates a new BSON parser instance with text search enabled.
+func NewWithTextSearch() *Parser {
+	return &Parser{
+		SearchMode: SearchModeText,
+	}
+}
+
+// SetSearchMode sets the search mode for the parser.
+func (p *Parser) SetSearchMode(mode SearchMode) {
+	p.SearchMode = mode
 }
 
 // Parse converts a Lucene-style query string into a BSON document.
@@ -148,15 +179,34 @@ func Parse(query string) (bson.M, error) {
 
 // Parse converts a Lucene-style query string into a BSON document.
 // The parsing process follows these steps:
-// 1. Tokenize the query string into tokens (field:value pairs, operators, parentheses)
-// 2. Validate that parentheses are properly matched
-// 3. Build an Abstract Syntax Tree (AST) from the tokens with proper operator precedence
-// 4. Convert the AST to MongoDB BSON format
+// 1. Check if query should use text search or field searches
+// 2. Tokenize the query string into tokens (field:value pairs, operators, parentheses)
+// 3. Validate that parentheses are properly matched
+// 4. Build an Abstract Syntax Tree (AST) from the tokens with proper operator precedence
+// 5. Convert the AST to MongoDB BSON format
 func (p *Parser) Parse(query string) (bson.M, error) {
 	if strings.TrimSpace(query) == "" {
 		return bson.M{}, nil
 	}
 
+	// If text search is enabled, handle all query types appropriately
+	if p.SearchMode == SearchModeText {
+		// Check if this is a mixed query (field searches + text search) first
+		if p.isMixedQuery(query) {
+			return p.parseMixedQuery(query)
+		}
+
+		// Check if this should be a text search query (no field:value pairs)
+		if p.shouldUseTextSearch(query) {
+			return p.parseTextSearch(query)
+		}
+
+		// If we get here, it's a pure field search with text search enabled
+		// Parse it as a regular field query
+		return p.parseFieldQuery(query)
+	}
+
+	// Text search is disabled, parse as regular field query
 	// Tokenize the query
 	tokens, err := p.tokenize(query)
 	if err != nil {
@@ -181,6 +231,285 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 	return p.astToBSON(ast), nil
 }
 
+// shouldUseTextSearch determines if a query should use text search instead of field searches.
+// Text search is used when:
+// 1. SearchMode is SearchModeText
+// 2. The query contains no field:value pairs (no colons)
+// 3. The query is not empty and contains search terms
+func (p *Parser) shouldUseTextSearch(query string) bool {
+	if p.SearchMode != SearchModeText {
+		return false
+	}
+
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return false
+	}
+
+	// Check if query contains any field:value pairs
+	if strings.Contains(trimmed, ":") {
+		return false
+	}
+
+	// Check if query contains logical operators without field:value pairs
+	// This would be a mixed query that needs special handling
+	if p.hasOperators(trimmed) {
+		return false
+	}
+
+	// If we get here, it's a simple text search query
+	return true
+}
+
+// parseTextSearch parses a text search query and returns a BSON document with $text operator.
+func (p *Parser) parseTextSearch(query string) (bson.M, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return bson.M{}, nil
+	}
+
+	// Only SearchModeText is supported for text search
+	if p.SearchMode != SearchModeText {
+		return nil, errors.New("text search requires SearchModeText")
+	}
+
+	return bson.M{"$text": bson.M{"$search": trimmed}}, nil
+}
+
+// isMixedQuery determines if a query contains both field searches and text search terms.
+// A mixed query contains both field:value pairs and standalone text terms.
+func (p *Parser) isMixedQuery(query string) bool {
+	if p.SearchMode != SearchModeText {
+		return false
+	}
+
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return false
+	}
+
+	// Check if query contains field:value pairs
+	hasFieldPairs := strings.Contains(trimmed, ":")
+	if !hasFieldPairs {
+		return false
+	}
+
+	// Use the same tokenization logic as parseMixedQuery to properly detect mixed queries
+	tokens, err := p.tokenizeMixedQuery(trimmed)
+	if err != nil {
+		return false
+	}
+
+	hasFieldTokens := false
+	hasTextTokens := false
+
+	for _, token := range tokens {
+		switch token.Type {
+		case TokenField:
+			hasFieldTokens = true
+		case TokenTextSearch:
+			hasTextTokens = true
+		}
+	}
+
+	return hasFieldTokens && hasTextTokens
+}
+
+// parseMixedQuery parses a mixed query containing both field searches and text search.
+// This parses the query to identify field:value pairs vs text terms and combines them.
+func (p *Parser) parseMixedQuery(query string) (bson.M, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return bson.M{}, nil
+	}
+
+	// Parse the query to separate field searches from text search terms
+	fieldQueries, textTerms, err := p.separateFieldAndTextTerms(trimmed)
+	if err != nil {
+		return nil, err
+	}
+
+	var conditions []bson.M
+
+	// Add field search conditions
+	if len(fieldQueries) > 0 {
+		fieldQuery := strings.Join(fieldQueries, " ")
+		fieldBSON, err := p.parseFieldQuery(fieldQuery)
+		if err != nil {
+			return nil, err
+		}
+		conditions = append(conditions, fieldBSON)
+	}
+
+	// Add text search condition
+	if len(textTerms) > 0 {
+		textQuery := strings.Join(textTerms, " ")
+		textBSON := bson.M{"$text": bson.M{"$search": textQuery}}
+		conditions = append(conditions, textBSON)
+	}
+
+	// Combine conditions
+	if len(conditions) == 0 {
+		return bson.M{}, nil
+	} else if len(conditions) == 1 {
+		return conditions[0], nil
+	} else {
+		return bson.M{"$and": conditions}, nil
+	}
+}
+
+// separateFieldAndTextTerms separates field:value pairs from standalone text terms in a mixed query.
+func (p *Parser) separateFieldAndTextTerms(query string) ([]string, []string, error) {
+	tokens, err := p.tokenizeMixedQuery(query)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	separator := &querySeparator{
+		fieldQueries: []string{},
+		textTerms:    []string{},
+	}
+
+	separator.processTokens(tokens)
+	return separator.fieldQueries, separator.textTerms, nil
+}
+
+// querySeparator helps separate field queries from text terms
+type querySeparator struct {
+	fieldQueries      []string
+	textTerms         []string
+	currentFieldQuery []string
+	currentTextTerms  []string
+}
+
+// processTokens processes all tokens to separate field and text terms
+func (qs *querySeparator) processTokens(tokens []Token) {
+	for i, token := range tokens {
+		qs.processToken(token)
+		qs.flushIfLastToken(i, len(tokens))
+	}
+}
+
+// processToken processes a single token
+func (qs *querySeparator) processToken(token Token) {
+	switch token.Type {
+	case TokenField:
+		qs.handleFieldToken(token)
+	case TokenAND, TokenOR, TokenNOT:
+		qs.handleOperatorToken(token)
+	case TokenLParen, TokenRParen:
+		qs.handleParenthesesToken(token)
+	case TokenTextSearch:
+		qs.handleTextSearchToken(token)
+	}
+}
+
+// handleFieldToken processes a field:value token
+func (qs *querySeparator) handleFieldToken(token Token) {
+	qs.flushTextTerms()
+	qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
+}
+
+// handleOperatorToken processes logical operator tokens
+func (qs *querySeparator) handleOperatorToken(token Token) {
+	if len(qs.currentFieldQuery) > 0 {
+		qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
+	} else if len(qs.currentTextTerms) > 0 {
+		qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+	}
+}
+
+// handleParenthesesToken processes parentheses tokens
+func (qs *querySeparator) handleParenthesesToken(token Token) {
+	if len(qs.currentFieldQuery) > 0 {
+		qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
+	} else if len(qs.currentTextTerms) > 0 {
+		qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+	}
+}
+
+// handleTextSearchToken processes text search tokens
+func (qs *querySeparator) handleTextSearchToken(token Token) {
+	qs.flushFieldQuery()
+	qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+}
+
+// flushTextTerms flushes accumulated text terms
+func (qs *querySeparator) flushTextTerms() {
+	if len(qs.currentTextTerms) > 0 {
+		qs.textTerms = append(qs.textTerms, strings.Join(qs.currentTextTerms, " "))
+		qs.currentTextTerms = nil
+	}
+}
+
+// flushFieldQuery flushes accumulated field query
+func (qs *querySeparator) flushFieldQuery() {
+	if len(qs.currentFieldQuery) > 0 {
+		qs.fieldQueries = append(qs.fieldQueries, strings.Join(qs.currentFieldQuery, " "))
+		qs.currentFieldQuery = nil
+	}
+}
+
+// flushIfLastToken flushes accumulated terms if this is the last token
+func (qs *querySeparator) flushIfLastToken(index, totalTokens int) {
+	if index == totalTokens-1 {
+		qs.flushFieldQuery()
+		qs.flushTextTerms()
+	}
+}
+
+// tokenizeMixedQuery tokenizes a mixed query, identifying field:value pairs and text terms.
+func (p *Parser) tokenizeMixedQuery(query string) ([]Token, error) {
+	var tokens []Token
+	query = strings.TrimSpace(query)
+
+	// For mixed queries, we need to split by spaces first, then identify field:value pairs
+	// This is different from regular field queries which need to preserve operator precedence
+	parts := strings.Fields(query)
+
+	for _, part := range parts {
+		// Check if this part is an operator
+		switch part {
+		case "AND":
+			tokens = append(tokens, Token{Type: TokenAND, Value: "AND"})
+		case "OR":
+			tokens = append(tokens, Token{Type: TokenOR, Value: "OR"})
+		case "NOT":
+			tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
+		case "(":
+			tokens = append(tokens, Token{Type: TokenLParen, Value: "("})
+		case ")":
+			tokens = append(tokens, Token{Type: TokenRParen, Value: ")"})
+		default:
+			// This is either a field:value pair or a text term
+			if strings.Contains(part, ":") {
+				// Field:value pair
+				colonIndex := strings.Index(part, ":")
+				field := strings.TrimSpace(part[:colonIndex])
+				value := strings.TrimSpace(part[colonIndex+1:])
+
+				if field == "" || value == "" {
+					return nil, errors.New("invalid field:value format in mixed query")
+				}
+
+				tokens = append(tokens, Token{Type: TokenField, Value: field + ":" + value})
+			} else {
+				// Text search term
+				tokens = append(tokens, Token{Type: TokenTextSearch, Value: part})
+			}
+		}
+	}
+
+	return tokens, nil
+}
+
+// parseFieldQuery parses a field-only query (without text search terms).
+func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
+	// Create a temporary parser with disabled text search to parse the field query
+	tempParser := &Parser{SearchMode: SearchModeDisabled}
+	return tempParser.Parse(query)
+}
+
 // validateParentheses checks if parentheses are properly matched
 func (p *Parser) validateParentheses(tokens []Token) error {
 	parenDepth := 0
@@ -203,60 +532,75 @@ func (p *Parser) validateParentheses(tokens []Token) error {
 
 // tokenize converts a query string into tokens
 func (p *Parser) tokenize(query string) ([]Token, error) {
-	var tokens []Token
 	query = strings.TrimSpace(query)
+	operatorPositions := p.findOperatorPositions(query)
+	return p.buildTokensFromPositions(query, operatorPositions)
+}
 
-	// Find all operators that are not inside parentheses
-	var operatorPositions []int
+// findOperatorPositions finds all operator positions not inside parentheses
+func (p *Parser) findOperatorPositions(query string) []int {
+	var positions []int
 	parenDepth := 0
 
 	for i := 0; i < len(query); i++ {
-		char := query[i]
-		if char == '(' {
-			parenDepth++
-		} else if char == ')' {
-			parenDepth--
-		} else if parenDepth == 0 {
-			// Check for operators at this position
+		parenDepth = p.updateParenDepth(query[i], parenDepth)
+		if parenDepth == 0 {
 			if op, newPos := p.findOperatorAtPosition(query, i); op.pattern != "" {
-				operatorPositions = append(operatorPositions, i)
+				positions = append(positions, i)
 				i = newPos - 1 // -1 because the loop will increment
 			}
 		}
 	}
+	return positions
+}
 
-	// Split the query at operator positions
+// updateParenDepth updates parentheses depth based on character
+func (p *Parser) updateParenDepth(char byte, currentDepth int) int {
+	switch char {
+	case '(':
+		return currentDepth + 1
+	case ')':
+		return currentDepth - 1
+	default:
+		return currentDepth
+	}
+}
+
+// buildTokensFromPositions builds tokens from query and operator positions
+func (p *Parser) buildTokensFromPositions(query string, operatorPositions []int) ([]Token, error) {
+	var tokens []Token
 	lastPos := 0
+
 	for _, pos := range operatorPositions {
-		part := strings.TrimSpace(query[lastPos:pos])
-		if part != "" {
-			partTokens, err := p.parsePart(part)
-			if err != nil {
-				return nil, err
-			}
-			tokens = append(tokens, partTokens...)
+		partTokens, err := p.processQueryPart(query[lastPos:pos])
+		if err != nil {
+			return nil, err
 		}
+		tokens = append(tokens, partTokens...)
 
 		// Add the operator
-		if op, _ := p.findOperatorAtPosition(query, pos); op.pattern != "" {
-			tokens = append(tokens, p.createToken(op.tokenType, strings.TrimSpace(op.pattern)))
-			lastPos = pos + len(op.pattern)
-		}
+		op, _ := p.findOperatorAtPosition(query, pos)
+		tokens = append(tokens, p.createToken(op.tokenType, strings.TrimSpace(op.pattern)))
+		lastPos = pos + len(op.pattern)
 	}
 
 	// Add the last part
-	if lastPos < len(query) {
-		part := strings.TrimSpace(query[lastPos:])
-		if part != "" {
-			partTokens, err := p.parsePart(part)
-			if err != nil {
-				return nil, err
-			}
-			tokens = append(tokens, partTokens...)
-		}
+	partTokens, err := p.processQueryPart(query[lastPos:])
+	if err != nil {
+		return nil, err
 	}
+	tokens = append(tokens, partTokens...)
 
 	return tokens, nil
+}
+
+// processQueryPart processes a part of the query and returns tokens
+func (p *Parser) processQueryPart(part string) ([]Token, error) {
+	part = strings.TrimSpace(part)
+	if part == "" {
+		return []Token{}, nil
+	}
+	return p.parsePart(part)
 }
 
 // parsePart parses a part of the query for field:value pairs and parentheses
@@ -602,6 +946,8 @@ func (p *Parser) astToBSON(node *Node) bson.M {
 		return p.handleNotNode(node)
 	case NodeGroup:
 		return p.handleGroupNode(node)
+	case NodeTextSearch:
+		return p.HandleTextSearchNode(node)
 	default:
 		return bson.M{}
 	}
@@ -670,6 +1016,34 @@ func (p *Parser) handleGroupNode(node *Node) bson.M {
 		return bson.M{}
 	}
 	return p.astToBSON(node.Children[0])
+}
+
+// HandleTextSearchNode processes text search nodes in the AST
+func (p *Parser) HandleTextSearchNode(node *Node) bson.M {
+	if node.Value == nil {
+		return bson.M{}
+	}
+
+	if p.SearchMode != SearchModeText {
+		return bson.M{}
+	}
+
+	// Convert value to string for text search
+	var searchTerm string
+	switch v := node.Value.(type) {
+	case string:
+		searchTerm = v
+	case int, int32, int64:
+		searchTerm = fmt.Sprintf("%d", v)
+	case float32, float64:
+		searchTerm = fmt.Sprintf("%g", v)
+	case bool:
+		searchTerm = fmt.Sprintf("%t", v)
+	default:
+		searchTerm = fmt.Sprintf("%v", v)
+	}
+
+	return bson.M{"$text": bson.M{"$search": searchTerm}}
 }
 
 // hasConflictingOperators checks if a BSON condition has operators that would conflict with direct field merging

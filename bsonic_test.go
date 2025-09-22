@@ -28,6 +28,270 @@ func TestParsePackageLevel(t *testing.T) {
 	}
 }
 
+func TestTextSearchConfiguration(t *testing.T) {
+	// Test default parser configuration
+	parser := bsonic.New()
+	if parser.SearchMode != bsonic.SearchModeDisabled {
+		t.Error("Default parser should use SearchModeDisabled")
+	}
+
+	// Test parser with text search enabled
+	parserWithText := bsonic.NewWithTextSearch()
+	if parserWithText.SearchMode != bsonic.SearchModeText {
+		t.Error("Parser with text search should use SearchModeText")
+	}
+
+	// Test setting search modes
+	parser.SetSearchMode(bsonic.SearchModeText)
+	if parser.SearchMode != bsonic.SearchModeText {
+		t.Error("Search mode should be SearchModeText after setting it")
+	}
+
+	parser.SetSearchMode(bsonic.SearchModeDisabled)
+	if parser.SearchMode != bsonic.SearchModeDisabled {
+		t.Error("Search mode should be SearchModeDisabled after setting it")
+	}
+}
+
+func TestTextSearchQueries(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "search terms",
+			expected: bson.M{
+				"$text": bson.M{"$search": "search terms"},
+			},
+			desc: "simple text search",
+		},
+		{
+			input: "multiple words search",
+			expected: bson.M{
+				"$text": bson.M{"$search": "multiple words search"},
+			},
+			desc: "text search with multiple words",
+		},
+		{
+			input: "  whitespace  around  ",
+			expected: bson.M{
+				"$text": bson.M{"$search": "whitespace  around"},
+			},
+			desc: "text search with whitespace",
+		},
+		{
+			input: "special-chars!@#$%",
+			expected: bson.M{
+				"$text": bson.M{"$search": "special-chars!@#$%"},
+			},
+			desc: "text search with special characters",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestTextSearchDisabled(t *testing.T) {
+	parser := bsonic.New() // Default parser with text search disabled
+
+	// Text search queries should be treated as field searches when disabled
+	_, err := parser.Parse("search terms")
+	if err == nil {
+		t.Error("Expected error for text search query when text search is disabled")
+	}
+}
+
+func TestFieldSearchTakesPrecedence(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Queries with field:value pairs should use field search even when text search is enabled
+	query, err := parser.Parse("name:john")
+	if err != nil {
+		t.Fatalf("Parse should not return error, got: %v", err)
+	}
+
+	expected := bson.M{"name": "john"}
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
+	}
+}
+
+func TestMixedQueries(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "engineer active:true",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"active": true},
+					{"$text": bson.M{"$search": "engineer"}},
+				},
+			},
+			desc: "text search with field search",
+		},
+		{
+			input: "software name:john",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"name": "john"},
+					{"$text": bson.M{"$search": "software"}},
+				},
+			},
+			desc: "text search with name field",
+		},
+		{
+			input: "designer role:user AND active:true",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"role": "user", "active": true},
+					{"$text": bson.M{"$search": "designer"}},
+				},
+			},
+			desc: "text search with complex field query",
+		},
+		{
+			input: "devops role:admin OR name:charlie",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"$or": []bson.M{
+						{"role": "admin"},
+						{"name": "charlie"},
+					}},
+					{"$text": bson.M{"$search": "devops"}},
+				},
+			},
+			desc: "text search with OR field query",
+		},
+		{
+			input: "multiple text terms active:true",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"active": true},
+					{"$text": bson.M{"$search": "multiple text terms"}},
+				},
+			},
+			desc: "multiple text terms with field search",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestEmptyTextSearchQuery(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Empty queries should return empty BSON
+	query, err := parser.Parse("")
+	if err != nil {
+		t.Fatalf("Empty query should not return error, got: %v", err)
+	}
+
+	if len(query) != 0 {
+		t.Fatalf("Empty query should return empty BSON, got: %+v", query)
+	}
+}
+
+func TestWhitespaceOnlyTextSearchQuery(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Whitespace-only queries should return empty BSON
+	query, err := parser.Parse("   ")
+	if err != nil {
+		t.Fatalf("Whitespace query should not return error, got: %v", err)
+	}
+
+	if len(query) != 0 {
+		t.Fatalf("Whitespace query should return empty BSON, got: %+v", query)
+	}
+}
+
+func TestTextSearchNodeHandling(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Test with valid text search node
+	node := &bsonic.Node{
+		Type:  bsonic.NodeTextSearch,
+		Value: "search term",
+	}
+
+	result := parser.HandleTextSearchNode(node)
+	expected := bson.M{"$text": bson.M{"$search": "search term"}}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+
+	// Test with nil value
+	node.Value = nil
+	result = parser.HandleTextSearchNode(node)
+	expected = bson.M{}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+
+	// Test with integer value (should convert to string)
+	node.Value = 123
+	result = parser.HandleTextSearchNode(node)
+	expected = bson.M{"$text": bson.M{"$search": "123"}}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+
+	// Test with float value (should convert to string)
+	node.Value = 45.67
+	result = parser.HandleTextSearchNode(node)
+	expected = bson.M{"$text": bson.M{"$search": "45.67"}}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+
+	// Test with boolean value (should convert to string)
+	node.Value = true
+	result = parser.HandleTextSearchNode(node)
+	expected = bson.M{"$text": bson.M{"$search": "true"}}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+
+	// Test with disabled search mode
+	parser.SetSearchMode(bsonic.SearchModeDisabled)
+	node.Value = "search term"
+	result = parser.HandleTextSearchNode(node)
+	expected = bson.M{}
+	if !compareBSONValues(result, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, result)
+	}
+}
+
 func TestParseEmptyQuery(t *testing.T) {
 	parser := bsonic.New()
 

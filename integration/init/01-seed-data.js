@@ -213,16 +213,44 @@ db.users.createIndex({ "active": 1 });
 db.users.createIndex({ "tags": 1 });
 db.users.createIndex({ "profile.location": 1 });
 
+// Create text indexes for full-text search
+// Text indexes must be created on all fields you want to be searchable
+db.users.createIndex({ 
+  "name": "text", 
+  "email": "text", 
+  "profile.bio": "text",
+  "tags": "text"
+});
+
 db.products.createIndex({ "name": 1 });
 db.products.createIndex({ "category": 1 });
 db.products.createIndex({ "price": 1 });
 db.products.createIndex({ "in_stock": 1 });
 db.products.createIndex({ "tags": 1 });
 
+// Create text index for products
+db.products.createIndex({ 
+  "name": "text", 
+  "category": "text",
+  "tags": "text",
+  "specifications.battery_life": "text",
+  "specifications.connectivity": "text",
+  "specifications.material": "text"
+});
+
 db.orders.createIndex({ "order_number": 1 });
 db.orders.createIndex({ "customer.email": 1 });
 db.orders.createIndex({ "status": 1 });
 db.orders.createIndex({ "created_at": 1 });
+
+// Create text index for orders
+db.orders.createIndex({ 
+  "order_number": "text",
+  "customer.name": "text",
+  "customer.email": "text",
+  "status": "text",
+  "payment_method": "text"
+});
 
 print('BSON integration test data seeded successfully!');
 print('Collections created: users, products, orders');
