@@ -806,6 +806,11 @@ func TestMixedSearchWithComplexFieldQueries(t *testing.T) {
 			expected: 1, // John Doe (software + active + admin)
 		},
 		{
+			name:     "software with active AND admin role grouped",
+			query:    "software (active:true AND role:admin)",
+			expected: 1, // John Doe (software + active + admin)
+		},
+		{
 			name:     "designer with name starting with J",
 			query:    "designer name:J*",
 			expected: 1, // Jane Smith (designer + name starts with J)
