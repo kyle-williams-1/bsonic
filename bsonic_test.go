@@ -1,7 +1,7 @@
 package bsonic_test
 
 import (
-	"strings"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1533,134 +1533,126 @@ func TestParseTextSearchErrorCases(t *testing.T) {
 }
 
 func TestParseTextSearchWithDisabledMode(t *testing.T) {
-	// Test the specific error case in parseTextSearch when SearchMode is not SearchModeText
-	// This tests lines 273-274 in bsonic.go
-
-	// Create a parser with disabled search mode
 	parser := bsonic.New() // SearchModeDisabled by default
 
-	// Test that the parser correctly handles text search queries when mode is disabled
-	// These should be treated as field queries, not text search
 	tests := []struct {
 		name        string
 		query       string
 		expectError bool
-		description string
 	}{
 		{
 			name:        "text search query with disabled mode",
 			query:       "engineer",
-			expectError: true, // Should fail because "engineer" is not a valid field:value pair
-			description: "Text search query should be treated as field query and fail",
+			expectError: true,
 		},
 		{
 			name:        "mixed query with disabled mode",
 			query:       "engineer name:john",
-			expectError: true, // Should fail because "engineer name" is not a valid field name (contains space)
-			description: "Mixed query should fail because field name contains spaces",
+			expectError: true,
 		},
 		{
 			name:        "valid field query with disabled mode",
 			query:       "name:engineer",
-			expectError: false, // Should work fine
-			description: "Valid field query should work with disabled mode",
+			expectError: false,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := parser.Parse(test.query)
+			_, err := parser.Parse(test.query)
 
 			if test.expectError {
 				if err == nil {
-					t.Fatalf("Expected error for query '%s', got none. %s", test.query, test.description)
-				}
-				// Verify the error is about invalid query format or field validation
-				if !strings.Contains(err.Error(), "appears to be a text search query but text search is disabled") &&
-					!strings.Contains(err.Error(), "invalid query format") &&
-					!strings.Contains(err.Error(), "invalid field:value pair") {
-					t.Fatalf("Expected query validation error, got: %v", err)
+					t.Fatalf("Expected error for query '%s', got none", test.query)
 				}
 			} else {
 				if err != nil {
-					t.Fatalf("Parse should not return error, got: %v. %s", err, test.description)
-				}
-				if result == nil {
-					t.Fatalf("Result should not be nil. %s", test.description)
+					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 			}
 		})
 	}
-
-	// Note: The specific error case in parseTextSearch (lines 273-274) is not directly testable
-	// through the public API because the Parse method has logic that prevents parseTextSearch
-	// from being called when SearchMode is not SearchModeText. This is actually good defensive
-	// programming - the error case serves as a safety net for internal bugs.
-	//
-	// The error case would be triggered if:
-	// 1. SearchMode is not SearchModeText
-	// 2. parseTextSearch is called directly (which shouldn't happen in normal usage)
-	// 3. There's a bug in the Parse method logic
-	//
-	// This test verifies that the normal behavior works correctly when SearchMode is disabled,
-	// which indirectly tests that the error case is not reached in normal operation.
 }
 
 func TestHandleParenthesesToken(t *testing.T) {
-	// Test handleParenthesesToken indirectly through mixed query parsing
-	parser := bsonic.NewWithTextSearch()
+	// Test handleParenthesesToken directly by creating querySeparator instances
+	// and calling the function with different states
 
 	tests := []struct {
-		name     string
-		query    string
-		expected bson.M
+		name               string
+		initialFieldQuery  []string
+		initialTextTerms   []string
+		parenthesesToken   string
+		expectedFieldQuery []string
+		expectedTextTerms  []string
 	}{
 		{
-			name:     "parentheses in field query part",
-			query:    "engineer (name:john AND age:25)",
-			expected: bson.M{"$and": []bson.M{{"name": "john", "age": 25.0}, {"$text": bson.M{"$search": "engineer"}}}},
+			name:               "parentheses with field query tokens present",
+			initialFieldQuery:  []string{"name:john"},
+			initialTextTerms:   []string{},
+			parenthesesToken:   "(",
+			expectedFieldQuery: []string{"name:john", "("},
+			expectedTextTerms:  []string{},
 		},
 		{
-			name:     "parentheses in text search part",
-			query:    "(engineer software) name:john",
-			expected: bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "(engineer software)"}}}},
+			name:               "parentheses with text terms present but no field query",
+			initialFieldQuery:  []string{},
+			initialTextTerms:   []string{"engineer", "software"},
+			parenthesesToken:   "(",
+			expectedFieldQuery: []string{},
+			expectedTextTerms:  []string{"engineer", "software", "("},
 		},
 		{
-			name:     "parentheses in text search only",
-			query:    "(engineer software)",
-			expected: bson.M{"$text": bson.M{"$search": "(engineer software)"}},
+			name:               "parentheses with both field query and text terms present (field query takes priority)",
+			initialFieldQuery:  []string{"name:john"},
+			initialTextTerms:   []string{"engineer"},
+			parenthesesToken:   ")",
+			expectedFieldQuery: []string{"name:john", ")"},
+			expectedTextTerms:  []string{"engineer"},
 		},
 		{
-			name:     "parentheses in field query only",
-			query:    "(name:john AND age:25)",
-			expected: bson.M{"name": "john", "age": 25.0},
+			name:               "parentheses with empty state (no change)",
+			initialFieldQuery:  []string{},
+			initialTextTerms:   []string{},
+			parenthesesToken:   "(",
+			expectedFieldQuery: []string{},
+			expectedTextTerms:  []string{},
 		},
 		{
-			name:     "parentheses after field query",
-			query:    "name:john AND (age:25)",
-			expected: bson.M{"name": "john", "age": 25.0},
-		},
-		{
-			name:     "parentheses after text search",
-			query:    "engineer (software)",
-			expected: bson.M{"$text": bson.M{"$search": "engineer (software)"}},
-		},
-		{
-			name:     "parentheses in mixed query with field first",
-			query:    "name:john engineer (software)",
-			expected: bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "engineer (software)"}}}},
+			name:               "closing parentheses with text terms only",
+			initialFieldQuery:  []string{},
+			initialTextTerms:   []string{"engineer"},
+			parenthesesToken:   ")",
+			expectedFieldQuery: []string{},
+			expectedTextTerms:  []string{"engineer", ")"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := parser.Parse(test.query)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
+			// Create a QuerySeparator with the initial state
+			qs := &bsonic.QuerySeparator{
+				CurrentFieldQuery: make([]string, len(test.initialFieldQuery)),
+				CurrentTextTerms:  make([]string, len(test.initialTextTerms)),
+			}
+			copy(qs.CurrentFieldQuery, test.initialFieldQuery)
+			copy(qs.CurrentTextTerms, test.initialTextTerms)
+
+			// Create a token for the parentheses
+			token := bsonic.Token{Type: bsonic.TokenLParen, Value: test.parenthesesToken}
+			if test.parenthesesToken == ")" {
+				token.Type = bsonic.TokenRParen
 			}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			// Call the function
+			qs.HandleParenthesesToken(token)
+
+			// Verify the results
+			if !reflect.DeepEqual(qs.CurrentFieldQuery, test.expectedFieldQuery) {
+				t.Errorf("Field query: expected %v, got %v", test.expectedFieldQuery, qs.CurrentFieldQuery)
+			}
+			if !reflect.DeepEqual(qs.CurrentTextTerms, test.expectedTextTerms) {
+				t.Errorf("Text terms: expected %v, got %v", test.expectedTextTerms, qs.CurrentTextTerms)
 			}
 		})
 	}

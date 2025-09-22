@@ -421,25 +421,25 @@ func (p *Parser) separateFieldAndTextTerms(query string) ([]string, []string, er
 		return nil, nil, err
 	}
 
-	separator := &querySeparator{
-		fieldQueries: []string{},
-		textTerms:    []string{},
+	separator := &QuerySeparator{
+		FieldQueries: []string{},
+		TextTerms:    []string{},
 	}
 
 	separator.processTokens(tokens)
-	return separator.fieldQueries, separator.textTerms, nil
+	return separator.FieldQueries, separator.TextTerms, nil
 }
 
 // querySeparator helps separate field queries from text terms
-type querySeparator struct {
-	fieldQueries      []string
-	textTerms         []string
-	currentFieldQuery []string
-	currentTextTerms  []string
+type QuerySeparator struct {
+	FieldQueries      []string
+	TextTerms         []string
+	CurrentFieldQuery []string
+	CurrentTextTerms  []string
 }
 
 // processTokens processes all tokens to separate field and text terms
-func (qs *querySeparator) processTokens(tokens []Token) {
+func (qs *QuerySeparator) processTokens(tokens []Token) {
 	for i, token := range tokens {
 		qs.processToken(token)
 		qs.flushIfLastToken(i, len(tokens))
@@ -447,67 +447,67 @@ func (qs *querySeparator) processTokens(tokens []Token) {
 }
 
 // processToken processes a single token
-func (qs *querySeparator) processToken(token Token) {
+func (qs *QuerySeparator) processToken(token Token) {
 	switch token.Type {
 	case TokenField:
 		qs.handleFieldToken(token)
 	case TokenAND, TokenOR, TokenNOT:
 		qs.handleOperatorToken(token)
 	case TokenLParen, TokenRParen:
-		qs.handleParenthesesToken(token)
+		qs.HandleParenthesesToken(token)
 	case TokenTextSearch:
 		qs.handleTextSearchToken(token)
 	}
 }
 
 // handleFieldToken processes a field:value token
-func (qs *querySeparator) handleFieldToken(token Token) {
+func (qs *QuerySeparator) handleFieldToken(token Token) {
 	qs.flushTextTerms()
-	qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
+	qs.CurrentFieldQuery = append(qs.CurrentFieldQuery, token.Value)
 }
 
 // handleOperatorToken processes logical operator tokens
-func (qs *querySeparator) handleOperatorToken(token Token) {
-	if len(qs.currentFieldQuery) > 0 {
-		qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
-	} else if len(qs.currentTextTerms) > 0 {
-		qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+func (qs *QuerySeparator) handleOperatorToken(token Token) {
+	if len(qs.CurrentFieldQuery) > 0 {
+		qs.CurrentFieldQuery = append(qs.CurrentFieldQuery, token.Value)
+	} else if len(qs.CurrentTextTerms) > 0 {
+		qs.CurrentTextTerms = append(qs.CurrentTextTerms, token.Value)
 	}
 }
 
-// handleParenthesesToken processes parentheses tokens
-func (qs *querySeparator) handleParenthesesToken(token Token) {
-	if len(qs.currentFieldQuery) > 0 {
-		qs.currentFieldQuery = append(qs.currentFieldQuery, token.Value)
-	} else if len(qs.currentTextTerms) > 0 {
-		qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+// HandleParenthesesToken processes parentheses tokens
+func (qs *QuerySeparator) HandleParenthesesToken(token Token) {
+	if len(qs.CurrentFieldQuery) > 0 {
+		qs.CurrentFieldQuery = append(qs.CurrentFieldQuery, token.Value)
+	} else if len(qs.CurrentTextTerms) > 0 {
+		qs.CurrentTextTerms = append(qs.CurrentTextTerms, token.Value)
 	}
 }
 
 // handleTextSearchToken processes text search tokens
-func (qs *querySeparator) handleTextSearchToken(token Token) {
+func (qs *QuerySeparator) handleTextSearchToken(token Token) {
 	qs.flushFieldQuery()
-	qs.currentTextTerms = append(qs.currentTextTerms, token.Value)
+	qs.CurrentTextTerms = append(qs.CurrentTextTerms, token.Value)
 }
 
 // flushTextTerms flushes accumulated text terms
-func (qs *querySeparator) flushTextTerms() {
-	if len(qs.currentTextTerms) > 0 {
-		qs.textTerms = append(qs.textTerms, strings.Join(qs.currentTextTerms, " "))
-		qs.currentTextTerms = nil
+func (qs *QuerySeparator) flushTextTerms() {
+	if len(qs.CurrentTextTerms) > 0 {
+		qs.TextTerms = append(qs.TextTerms, strings.Join(qs.CurrentTextTerms, " "))
+		qs.CurrentTextTerms = nil
 	}
 }
 
 // flushFieldQuery flushes accumulated field query
-func (qs *querySeparator) flushFieldQuery() {
-	if len(qs.currentFieldQuery) > 0 {
-		qs.fieldQueries = append(qs.fieldQueries, strings.Join(qs.currentFieldQuery, " "))
-		qs.currentFieldQuery = nil
+func (qs *QuerySeparator) flushFieldQuery() {
+	if len(qs.CurrentFieldQuery) > 0 {
+		qs.FieldQueries = append(qs.FieldQueries, strings.Join(qs.CurrentFieldQuery, " "))
+		qs.CurrentFieldQuery = nil
 	}
 }
 
 // flushIfLastToken flushes accumulated terms if this is the last token
-func (qs *querySeparator) flushIfLastToken(index, totalTokens int) {
+func (qs *QuerySeparator) flushIfLastToken(index, totalTokens int) {
 	if index == totalTokens-1 {
 		qs.flushFieldQuery()
 		qs.flushTextTerms()
