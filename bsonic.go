@@ -207,33 +207,18 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 	}
 
 	// Text search is disabled, parse as regular field query
-	// First, validate that this looks like a proper field query
-	if err := p.validateFieldQuery(query); err != nil {
-		return nil, err
-	}
-
-	// Tokenize the query
-	tokens, err := p.Tokenize(query)
+	// First validate that this is a proper field query
+	tokens, err := p.tokenize(query)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate parentheses matching
-	if err := p.validateParentheses(tokens); err != nil {
+	if err := p.validateFieldQueryTokens(tokens); err != nil {
 		return nil, err
 	}
 
-	// Parse tokens into an Abstract Syntax Tree (AST)
-	// The AST represents the query structure as a tree of nodes,
-	// making it easier to handle operator precedence and nested expressions.
-	ast, _, err := p.parseExpression(tokens, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert the AST to MongoDB BSON format
-	// This traverses the tree and generates the appropriate BSON operators
-	return p.astToBSON(ast), nil
+	// Use the internal field parsing logic
+	return p.parseFieldQueryInternal(query)
 }
 
 // shouldUseTextSearch determines if a query should use text search instead of field searches.
@@ -266,49 +251,36 @@ func (p *Parser) shouldUseTextSearch(query string) bool {
 	return true
 }
 
-// validateFieldQuery validates that a query looks like a proper field query when text search is disabled
-func (p *Parser) validateFieldQuery(query string) error {
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
+// validateFieldQueryTokens validates that tokens represent a proper field query when text search is disabled
+func (p *Parser) validateFieldQueryTokens(tokens []Token) error {
+	if len(tokens) == 0 {
 		return nil
 	}
 
-	// Check if this looks like a text search query (no valid field:value pairs)
-	// If so, suggest enabling text search
-	if !p.HasValidFieldPairs(trimmed) {
-		return fmt.Errorf("query '%s' appears to be a text search query but text search is disabled. Consider using NewWithTextSearch() or SetSearchMode(SearchModeText) to enable text search", trimmed)
+	// Check if we have any field tokens
+	hasFieldTokens := false
+	for _, token := range tokens {
+		if token.Type == TokenField {
+			hasFieldTokens = true
+			// Validate that this is actually a proper field:value pair
+			if !p.isValidFieldValuePair(token.Value) {
+				return fmt.Errorf("invalid field:value pair '%s' - field names cannot contain spaces", token.Value)
+			}
+		}
+	}
+
+	// If no field tokens found, this looks like a text search query
+	if !hasFieldTokens {
+		// Reconstruct the original query for the error message
+		query := p.tokensToString(tokens)
+		return fmt.Errorf("query '%s' appears to be a text search query but text search is disabled. Consider using NewWithTextSearch() or SetSearchMode(SearchModeText) to enable text search", query)
 	}
 
 	return nil
 }
 
-// HasValidFieldPairs checks if a query contains valid field:value pairs and operators
-func (p *Parser) HasValidFieldPairs(query string) bool {
-	// Use the existing tokenization logic to properly parse the query
-	tokens, err := p.Tokenize(query)
-	if err != nil {
-		return false
-	}
-
-	// Check if all tokens are valid (either field:value pairs or operators)
-	for _, token := range tokens {
-		if token.Type == TokenField {
-			// Validate that this is actually a proper field:value pair
-			if !p.IsValidFieldValuePair(token.Value) {
-				return false
-			}
-		} else if token.Type != TokenAND && token.Type != TokenOR && token.Type != TokenNOT &&
-			token.Type != TokenLParen && token.Type != TokenRParen {
-			// Only allow field:value pairs, operators, and parentheses
-			return false
-		}
-	}
-
-	return len(tokens) > 0
-}
-
-// IsValidFieldValuePair checks if a string is a valid field:value pair
-func (p *Parser) IsValidFieldValuePair(value string) bool {
+// isValidFieldValuePair checks if a string is a valid field:value pair
+func (p *Parser) isValidFieldValuePair(value string) bool {
 	// Find the first colon (field:value separator)
 	colonIndex := strings.Index(value, ":")
 	if colonIndex == -1 {
@@ -334,6 +306,15 @@ func (p *Parser) IsValidFieldValuePair(value string) bool {
 	}
 
 	return true
+}
+
+// tokensToString reconstructs the original query string from tokens
+func (p *Parser) tokensToString(tokens []Token) string {
+	var parts []string
+	for _, token := range tokens {
+		parts = append(parts, token.Value)
+	}
+	return strings.Join(parts, " ")
 }
 
 // parseTextSearch parses a text search query and returns a BSON document with $text operator.
@@ -580,9 +561,34 @@ func (p *Parser) tokenizeMixedQuery(query string) ([]Token, error) {
 
 // parseFieldQuery parses a field-only query (without text search terms).
 func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
-	// Create a temporary parser with disabled text search to parse the field query
-	tempParser := &Parser{SearchMode: SearchModeDisabled}
-	return tempParser.Parse(query)
+	return p.parseFieldQueryInternal(query)
+}
+
+// parseFieldQueryInternal contains the core field parsing logic without SearchMode checks
+func (p *Parser) parseFieldQueryInternal(query string) (bson.M, error) {
+	if strings.TrimSpace(query) == "" {
+		return bson.M{}, nil
+	}
+
+	// Tokenize the query
+	tokens, err := p.tokenize(query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate parentheses matching
+	if err := p.validateParentheses(tokens); err != nil {
+		return nil, err
+	}
+
+	// Parse tokens into an Abstract Syntax Tree (AST)
+	ast, _, err := p.parseExpression(tokens, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert the AST to MongoDB BSON format
+	return p.astToBSON(ast), nil
 }
 
 // validateParentheses checks if parentheses are properly matched
@@ -606,7 +612,7 @@ func (p *Parser) validateParentheses(tokens []Token) error {
 }
 
 // tokenize converts a query string into tokens
-func (p *Parser) Tokenize(query string) ([]Token, error) {
+func (p *Parser) tokenize(query string) ([]Token, error) {
 	query = strings.TrimSpace(query)
 	operatorPositions := p.findOperatorPositions(query)
 	return p.buildTokensFromPositions(query, operatorPositions)
@@ -746,7 +752,7 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 			i++
 		default:
 			// Check if this starts with NOT
-			if p.isNotOperation(part[i:]) {
+			if strings.HasPrefix(strings.ToUpper(part[i:]), "NOT ") {
 				tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
 				i += 4 // Skip "NOT "
 				continue
@@ -764,11 +770,6 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 	}
 
 	return tokens, nil
-}
-
-// isNotOperation checks if the remaining string starts with "NOT "
-func (p *Parser) isNotOperation(remaining string) bool {
-	return strings.HasPrefix(strings.ToUpper(remaining), "NOT ")
 }
 
 // parseFieldValuePair parses a field:value pair from the given position
@@ -819,16 +820,16 @@ func (p *Parser) findValueEnd(part string, valueStart int) (int, error) {
 	for valueEnd < len(part) {
 		char := part[valueEnd]
 
-		if p.shouldStartQuote(char, inQuotes, inBrackets) {
+		if !inQuotes && !inBrackets && (char == '"' || char == '\'') {
 			inQuotes = true
 			quoteChar = char
-		} else if p.shouldEndQuote(char, inQuotes, quoteChar) {
+		} else if inQuotes && char == quoteChar {
 			inQuotes = false
-		} else if p.shouldStartBrackets(char, inQuotes) {
+		} else if !inQuotes && char == '[' {
 			inBrackets = true
-		} else if p.shouldEndBrackets(char, inQuotes) {
+		} else if !inQuotes && char == ']' {
 			inBrackets = false
-		} else if p.shouldEndValue(char, inQuotes, inBrackets) {
+		} else if !inQuotes && !inBrackets && char == ')' {
 			// Only break on closing parentheses, not on spaces or opening parentheses
 			// Spaces are allowed in values
 			break
@@ -837,31 +838,6 @@ func (p *Parser) findValueEnd(part string, valueStart int) (int, error) {
 	}
 
 	return valueEnd, nil
-}
-
-// shouldStartQuote determines if a character should start a quoted string
-func (p *Parser) shouldStartQuote(char byte, inQuotes, inBrackets bool) bool {
-	return !inQuotes && !inBrackets && (char == '"' || char == '\'')
-}
-
-// shouldEndQuote determines if a character should end a quoted string
-func (p *Parser) shouldEndQuote(char byte, inQuotes bool, quoteChar byte) bool {
-	return inQuotes && char == quoteChar
-}
-
-// shouldStartBrackets determines if a character should start brackets
-func (p *Parser) shouldStartBrackets(char byte, inQuotes bool) bool {
-	return !inQuotes && char == '['
-}
-
-// shouldEndBrackets determines if a character should end brackets
-func (p *Parser) shouldEndBrackets(char byte, inQuotes bool) bool {
-	return !inQuotes && char == ']'
-}
-
-// shouldEndValue determines if a character should end the value parsing
-func (p *Parser) shouldEndValue(char byte, inQuotes, inBrackets bool) bool {
-	return !inQuotes && !inBrackets && char == ')'
 }
 
 // parseExpression parses tokens into an AST with proper operator precedence
@@ -1153,30 +1129,27 @@ func (p *Parser) combineAndConditions(andConditions []bson.M, directFields bson.
 	}
 }
 
-// negateOrExpression negates an OR expression using De Morgan's law: NOT (A OR B) = (NOT A) AND (NOT B)
-func (p *Parser) negateOrExpression(orConditions []bson.M) bson.M {
+// negateConditions negates a list of conditions by adding $ne operators to each field
+func (p *Parser) negateConditions(conditions []bson.M) []bson.M {
 	var negatedConditions []bson.M
-	for _, condition := range orConditions {
+	for _, condition := range conditions {
 		negatedCondition := bson.M{}
 		for k, v := range condition {
 			negatedCondition[k] = bson.M{"$ne": v}
 		}
 		negatedConditions = append(negatedConditions, negatedCondition)
 	}
-	return bson.M{"$and": negatedConditions}
+	return negatedConditions
+}
+
+// negateOrExpression negates an OR expression using De Morgan's law: NOT (A OR B) = (NOT A) AND (NOT B)
+func (p *Parser) negateOrExpression(orConditions []bson.M) bson.M {
+	return bson.M{"$and": p.negateConditions(orConditions)}
 }
 
 // negateAndExpression negates an AND expression using De Morgan's law: NOT (A AND B) = (NOT A) OR (NOT B)
 func (p *Parser) negateAndExpression(andConditions []bson.M) bson.M {
-	var negatedConditions []bson.M
-	for _, condition := range andConditions {
-		negatedCondition := bson.M{}
-		for k, v := range condition {
-			negatedCondition[k] = bson.M{"$ne": v}
-		}
-		negatedConditions = append(negatedConditions, negatedCondition)
-	}
-	return bson.M{"$or": negatedConditions}
+	return bson.M{"$or": p.negateConditions(andConditions)}
 }
 
 // negateFieldValuePairs negates field:value pairs by adding $ne operators

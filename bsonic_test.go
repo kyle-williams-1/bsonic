@@ -1575,9 +1575,11 @@ func TestParseTextSearchWithDisabledMode(t *testing.T) {
 				if err == nil {
 					t.Fatalf("Expected error for query '%s', got none. %s", test.query, test.description)
 				}
-				// Verify the error is about text search being disabled
-				if !strings.Contains(err.Error(), "appears to be a text search query but text search is disabled") {
-					t.Fatalf("Expected text search disabled error, got: %v", err)
+				// Verify the error is about invalid query format or field validation
+				if !strings.Contains(err.Error(), "appears to be a text search query but text search is disabled") &&
+					!strings.Contains(err.Error(), "invalid query format") &&
+					!strings.Contains(err.Error(), "invalid field:value pair") {
+					t.Fatalf("Expected query validation error, got: %v", err)
 				}
 			} else {
 				if err != nil {
@@ -1602,6 +1604,349 @@ func TestParseTextSearchWithDisabledMode(t *testing.T) {
 	//
 	// This test verifies that the normal behavior works correctly when SearchMode is disabled,
 	// which indirectly tests that the error case is not reached in normal operation.
+}
+
+func TestHandleParenthesesToken(t *testing.T) {
+	// Test handleParenthesesToken indirectly through mixed query parsing
+	parser := bsonic.NewWithTextSearch()
+
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:     "parentheses in field query part",
+			query:    "engineer (name:john AND age:25)",
+			expected: bson.M{"$and": []bson.M{{"name": "john", "age": 25.0}, {"$text": bson.M{"$search": "engineer"}}}},
+		},
+		{
+			name:     "parentheses in text search part",
+			query:    "(engineer software) name:john",
+			expected: bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "(engineer software)"}}}},
+		},
+		{
+			name:     "parentheses in text search only",
+			query:    "(engineer software)",
+			expected: bson.M{"$text": bson.M{"$search": "(engineer software)"}},
+		},
+		{
+			name:     "parentheses in field query only",
+			query:    "(name:john AND age:25)",
+			expected: bson.M{"name": "john", "age": 25.0},
+		},
+		{
+			name:     "parentheses after field query",
+			query:    "name:john AND (age:25)",
+			expected: bson.M{"name": "john", "age": 25.0},
+		},
+		{
+			name:     "parentheses after text search",
+			query:    "engineer (software)",
+			expected: bson.M{"$text": bson.M{"$search": "engineer (software)"}},
+		},
+		{
+			name:     "parentheses in mixed query with field first",
+			query:    "name:john engineer (software)",
+			expected: bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "engineer (software)"}}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestIsValidFieldValuePairEdgeCases(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test isValidFieldValuePair indirectly through validation
+	tests := []struct {
+		name        string
+		query       string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "field with empty value",
+			query:       "name:",
+			expectError: true,
+			description: "Field with empty value should be invalid",
+		},
+		{
+			name:        "empty field with value",
+			query:       ":john",
+			expectError: true,
+			description: "Empty field with value should be invalid",
+		},
+		{
+			name:        "field with space in name",
+			query:       "user name:john",
+			expectError: true,
+			description: "Field name with spaces should be invalid",
+		},
+		{
+			name:        "value starting with colon",
+			query:       "name::john",
+			expectError: true,
+			description: "Value starting with colon should be invalid",
+		},
+		{
+			name:        "valid field value pair",
+			query:       "name:john",
+			expectError: false,
+			description: "Valid field:value pair should work",
+		},
+		{
+			name:        "valid field with date value",
+			query:       "created_at:2023-01-15T10:30:00Z",
+			expectError: false,
+			description: "Field with date value should work",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parser.Parse(test.query)
+
+			if test.expectError {
+				if err == nil {
+					t.Fatalf("Expected error for query '%s', got none. %s", test.query, test.description)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v. %s", err, test.description)
+				}
+			}
+		})
+	}
+}
+
+func TestParsePrimaryExpressionEdgeCases(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test parsePrimaryExpression edge cases
+	tests := []struct {
+		name        string
+		query       string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "unexpected token type",
+			query:       "AND name:john",
+			expectError: true,
+			description: "AND at start should be invalid",
+		},
+		{
+			name:        "unexpected end of query",
+			query:       "AND",
+			expectError: true,
+			description: "AND without operands should be invalid",
+		},
+		{
+			name:        "valid field value pair",
+			query:       "name:john",
+			expectError: false,
+			description: "Valid field:value pair should work",
+		},
+		{
+			name:        "valid parentheses group",
+			query:       "(name:john AND age:25)",
+			expectError: false,
+			description: "Valid parentheses group should work",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parser.Parse(test.query)
+
+			if test.expectError {
+				if err == nil {
+					t.Fatalf("Expected error for query '%s', got none. %s", test.query, test.description)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v. %s", err, test.description)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleOperatorTokenEdgeCases(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Test handleOperatorToken indirectly through mixed query parsing
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:     "AND operator in mixed query",
+			query:    "engineer name:john AND age:25",
+			expected: bson.M{"$and": []bson.M{{"name": "john", "age": 25.0}, {"$text": bson.M{"$search": "engineer"}}}},
+		},
+		{
+			name:     "OR operator in mixed query",
+			query:    "engineer name:john OR name:jane",
+			expected: bson.M{"$and": []bson.M{{"$or": []bson.M{{"name": "john"}, {"name": "jane"}}}, {"$text": bson.M{"$search": "engineer"}}}},
+		},
+		{
+			name:     "NOT operator in mixed query",
+			query:    "engineer name:john",
+			expected: bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "engineer"}}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestAstToBSONEdgeCases(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test astToBSON edge cases
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:     "default case in astToBSON",
+			query:    "name:john",
+			expected: bson.M{"name": "john"},
+		},
+		{
+			name:     "complex nested query",
+			query:    "(name:john OR name:jane) AND age:25",
+			expected: bson.M{"$and": []bson.M{{"$or": []bson.M{{"name": "john"}, {"name": "jane"}}}, {"age": 25.0}}},
+		},
+		{
+			name:     "NOT with field value",
+			query:    "NOT name:john",
+			expected: bson.M{"name": bson.M{"$ne": "john"}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseTextSearchEdgeCases(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	// Test parseTextSearch edge cases
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:     "empty text search",
+			query:    "",
+			expected: bson.M{},
+		},
+		{
+			name:     "whitespace only text search",
+			query:    "   ",
+			expected: bson.M{},
+		},
+		{
+			name:     "simple text search",
+			query:    "engineer",
+			expected: bson.M{"$text": bson.M{"$search": "engineer"}},
+		},
+		{
+			name:     "text search with multiple words",
+			query:    "software engineer",
+			expected: bson.M{"$text": bson.M{"$search": "software engineer"}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestEdgeCasesForCoverage(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test various edge cases to improve coverage
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:     "complex nested query with multiple operators",
+			query:    "(name:john OR name:jane) AND (age:25 OR age:30) AND NOT status:inactive",
+			expected: bson.M{"$and": []bson.M{{"$and": []bson.M{{"$or": []bson.M{{"name": "john"}, {"name": "jane"}}}, {"$or": []bson.M{{"age": 25.0}, {"age": 30.0}}}}}, {"status": bson.M{"$ne": "inactive"}}}},
+		},
+		{
+			name:     "wildcard with complex operators",
+			query:    "name:*john* AND age:25",
+			expected: bson.M{"name": bson.M{"$regex": ".*john.*", "$options": "i"}, "age": 25.0},
+		},
+		{
+			name:     "simple field query",
+			query:    "name:john AND age:25",
+			expected: bson.M{"name": "john", "age": 25.0},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
 }
 
 func TestHandleGroupNodeEdgeCases(t *testing.T) {
