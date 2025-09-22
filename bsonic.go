@@ -452,7 +452,7 @@ func (qs *QuerySeparator) processToken(token Token) {
 	case TokenField:
 		qs.handleFieldToken(token)
 	case TokenAND, TokenOR, TokenNOT:
-		qs.handleOperatorToken(token)
+		qs.HandleOperatorToken(token)
 	case TokenLParen, TokenRParen:
 		qs.HandleParenthesesToken(token)
 	case TokenTextSearch:
@@ -466,8 +466,8 @@ func (qs *QuerySeparator) handleFieldToken(token Token) {
 	qs.CurrentFieldQuery = append(qs.CurrentFieldQuery, token.Value)
 }
 
-// handleOperatorToken processes logical operator tokens
-func (qs *QuerySeparator) handleOperatorToken(token Token) {
+// HandleOperatorToken processes logical operator tokens
+func (qs *QuerySeparator) HandleOperatorToken(token Token) {
 	if len(qs.CurrentFieldQuery) > 0 {
 		qs.CurrentFieldQuery = append(qs.CurrentFieldQuery, token.Value)
 	} else if len(qs.CurrentTextTerms) > 0 {
@@ -708,7 +708,7 @@ func (p *Parser) parsePart(part string) ([]Token, error) {
 			// Add operator if present
 			if i < len(subOperators) {
 				op := strings.TrimSpace(subOperators[i])
-				tokenType := p.getTokenTypeFromString(strings.ToUpper(op))
+				tokenType := p.GetTokenTypeFromString(strings.ToUpper(op))
 				tokens = append(tokens, p.createToken(tokenType, op))
 			}
 		}
@@ -720,7 +720,7 @@ func (p *Parser) parsePart(part string) ([]Token, error) {
 }
 
 // getTokenTypeFromString converts operator string to token type
-func (p *Parser) getTokenTypeFromString(op string) TokenType {
+func (p *Parser) GetTokenTypeFromString(op string) TokenType {
 	switch op {
 	case "AND":
 		return TokenAND
@@ -751,7 +751,7 @@ func (p *Parser) parseSimplePart(part string) ([]Token, error) {
 			tokens = append(tokens, Token{Type: TokenRParen, Value: ")"})
 			i++
 		default:
-			// Check if this starts with NOT
+			// Check if this starts with NOT (for cases where NOT is not detected by operator regex)
 			if strings.HasPrefix(strings.ToUpper(part[i:]), "NOT ") {
 				tokens = append(tokens, Token{Type: TokenNOT, Value: "NOT"})
 				i += 4 // Skip "NOT "
@@ -996,7 +996,7 @@ func (p *Parser) astToBSON(node *Node) bson.M {
 	case NodeNOT:
 		return p.handleNotNode(node)
 	case NodeGroup:
-		return p.handleGroupNode(node)
+		return p.HandleGroupNode(node)
 	case NodeTextSearch:
 		return p.HandleTextSearchNode(node)
 	default:
@@ -1062,7 +1062,7 @@ func (p *Parser) handleNotNode(node *Node) bson.M {
 }
 
 // handleGroupNode processes parenthesized groups in the AST
-func (p *Parser) handleGroupNode(node *Node) bson.M {
+func (p *Parser) HandleGroupNode(node *Node) bson.M {
 	if len(node.Children) != 1 {
 		return bson.M{}
 	}

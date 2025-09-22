@@ -1658,6 +1658,206 @@ func TestHandleParenthesesToken(t *testing.T) {
 	}
 }
 
+func TestHandleOperatorToken(t *testing.T) {
+	// Test handleOperatorToken directly by creating QuerySeparator instances
+	// and calling the function with different states
+
+	tests := []struct {
+		name               string
+		initialFieldQuery  []string
+		initialTextTerms   []string
+		operatorToken      string
+		expectedFieldQuery []string
+		expectedTextTerms  []string
+	}{
+		{
+			name:               "operator with field query tokens present",
+			initialFieldQuery:  []string{"name:john"},
+			initialTextTerms:   []string{},
+			operatorToken:      "AND",
+			expectedFieldQuery: []string{"name:john", "AND"},
+			expectedTextTerms:  []string{},
+		},
+		{
+			name:               "operator with text terms present but no field query",
+			initialFieldQuery:  []string{},
+			initialTextTerms:   []string{"engineer", "software"},
+			operatorToken:      "OR",
+			expectedFieldQuery: []string{},
+			expectedTextTerms:  []string{"engineer", "software", "OR"},
+		},
+		{
+			name:               "operator with both field query and text terms present (field query takes priority)",
+			initialFieldQuery:  []string{"name:john"},
+			initialTextTerms:   []string{"engineer"},
+			operatorToken:      "NOT",
+			expectedFieldQuery: []string{"name:john", "NOT"},
+			expectedTextTerms:  []string{"engineer"},
+		},
+		{
+			name:               "operator with empty state (no change)",
+			initialFieldQuery:  []string{},
+			initialTextTerms:   []string{},
+			operatorToken:      "AND",
+			expectedFieldQuery: []string{},
+			expectedTextTerms:  []string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Create a QuerySeparator with the initial state
+			qs := &bsonic.QuerySeparator{
+				CurrentFieldQuery: make([]string, len(test.initialFieldQuery)),
+				CurrentTextTerms:  make([]string, len(test.initialTextTerms)),
+			}
+			copy(qs.CurrentFieldQuery, test.initialFieldQuery)
+			copy(qs.CurrentTextTerms, test.initialTextTerms)
+
+			// Create a token for the operator
+			token := bsonic.Token{Type: bsonic.TokenAND, Value: test.operatorToken}
+			switch test.operatorToken {
+			case "OR":
+				token.Type = bsonic.TokenOR
+			case "NOT":
+				token.Type = bsonic.TokenNOT
+			}
+
+			// Call the function
+			qs.HandleOperatorToken(token)
+
+			// Verify the results
+			if !reflect.DeepEqual(qs.CurrentFieldQuery, test.expectedFieldQuery) {
+				t.Errorf("Field query: expected %v, got %v", test.expectedFieldQuery, qs.CurrentFieldQuery)
+			}
+			if !reflect.DeepEqual(qs.CurrentTextTerms, test.expectedTextTerms) {
+				t.Errorf("Text terms: expected %v, got %v", test.expectedTextTerms, qs.CurrentTextTerms)
+			}
+		})
+	}
+}
+
+func TestGetTokenTypeFromString(t *testing.T) {
+	// Test getTokenTypeFromString directly
+	parser := bsonic.New()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected bsonic.TokenType
+	}{
+		{
+			name:     "AND operator",
+			input:    "AND",
+			expected: bsonic.TokenAND,
+		},
+		{
+			name:     "OR operator",
+			input:    "OR",
+			expected: bsonic.TokenOR,
+		},
+		{
+			name:     "NOT operator",
+			input:    "NOT",
+			expected: bsonic.TokenNOT,
+		},
+		{
+			name:     "unknown operator",
+			input:    "UNKNOWN",
+			expected: bsonic.TokenEOF,
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: bsonic.TokenEOF,
+		},
+		{
+			name:     "case sensitive - lowercase",
+			input:    "and",
+			expected: bsonic.TokenEOF,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := parser.GetTokenTypeFromString(test.input)
+			if result != test.expected {
+				t.Errorf("Expected %v, got %v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestHandleGroupNode(t *testing.T) {
+	// Test handleGroupNode directly
+	parser := bsonic.New()
+
+	tests := []struct {
+		name     string
+		node     *bsonic.Node
+		expected bson.M
+	}{
+		{
+			name: "single child node",
+			node: &bsonic.Node{
+				Type: bsonic.NodeGroup,
+				Children: []*bsonic.Node{
+					{
+						Type:  bsonic.NodeFieldValue,
+						Field: "name",
+						Value: "john",
+					},
+				},
+			},
+			expected: bson.M{"name": "john"},
+		},
+		{
+			name: "no children (empty group)",
+			node: &bsonic.Node{
+				Type:     bsonic.NodeGroup,
+				Children: []*bsonic.Node{},
+			},
+			expected: bson.M{},
+		},
+		{
+			name: "multiple children (should return empty)",
+			node: &bsonic.Node{
+				Type: bsonic.NodeGroup,
+				Children: []*bsonic.Node{
+					{
+						Type:  bsonic.NodeFieldValue,
+						Field: "name",
+						Value: "john",
+					},
+					{
+						Type:  bsonic.NodeFieldValue,
+						Field: "age",
+						Value: 25,
+					},
+				},
+			},
+			expected: bson.M{},
+		},
+		{
+			name: "nil children",
+			node: &bsonic.Node{
+				Type:     bsonic.NodeGroup,
+				Children: nil,
+			},
+			expected: bson.M{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := parser.HandleGroupNode(test.node)
+			if !reflect.DeepEqual(result, test.expected) {
+				t.Errorf("Expected %v, got %v", test.expected, result)
+			}
+		})
+	}
+}
+
 func TestIsValidFieldValuePairEdgeCases(t *testing.T) {
 	parser := bsonic.New()
 
@@ -1987,6 +2187,100 @@ func TestHandleGroupNodeEdgeCases(t *testing.T) {
 
 			if !compareBSONValues(result, test.expected) {
 				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+// TestNOTInParentheses tests NOT operations inside parentheses
+// This test covers the edge case where NOT appears in parentheses and isn't caught by operator regex
+func TestNOTInParentheses(t *testing.T) {
+	parser := bsonic.New()
+
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			name:  "NOT in single parentheses",
+			query: "(NOT role:admin)",
+			expected: bson.M{
+				"role": bson.M{"$ne": "admin"},
+			},
+			desc: "NOT operation inside single parentheses",
+		},
+		{
+			name:  "NOT in multiple parentheses",
+			query: "(NOT role:admin) AND (NOT name:Bob Johnson)",
+			expected: bson.M{
+				"role": bson.M{"$ne": "admin"},
+				"name": bson.M{"$ne": "Bob Johnson"},
+			},
+			desc: "Multiple NOT operations in separate parentheses",
+		},
+		{
+			name:  "NOT with complex field in parentheses",
+			query: "(NOT name:jo*) AND (NOT status:active)",
+			expected: bson.M{
+				"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
+				"status": bson.M{"$ne": "active"},
+			},
+			desc: "NOT with wildcard and simple field in parentheses",
+		},
+		{
+			name:  "NOT with quoted value in parentheses",
+			query: "(NOT name:\"john doe\") AND (NOT email:\"test@example.com\")",
+			expected: bson.M{
+				"name":  bson.M{"$ne": "john doe"},
+				"email": bson.M{"$ne": "test@example.com"},
+			},
+			desc: "NOT with quoted values in parentheses",
+		},
+		{
+			name:  "NOT with nested parentheses",
+			query: "((NOT role:admin) AND (NOT name:Bob)) OR status:active",
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"role": bson.M{"$ne": "admin"},
+						"name": bson.M{"$ne": "Bob"},
+					},
+					{"status": "active"},
+				},
+			},
+			desc: "NOT with nested parentheses and OR condition",
+		},
+		{
+			name:  "NOT with date comparison in parentheses",
+			query: "(NOT created_at:>2024-01-01) AND (NOT updated_at:<2023-01-01)",
+			expected: bson.M{
+				"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+			},
+			desc: "NOT with date comparisons in parentheses",
+		},
+		{
+			name:  "NOT with whitespace in parentheses",
+			query: "  (  NOT  role:admin  )  AND  (  NOT  name:Bob  )  ",
+			expected: bson.M{
+				"role": bson.M{"$ne": "admin"},
+				"name": bson.M{"$ne": "Bob"},
+			},
+			desc: "NOT with extra whitespace in parentheses",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if err != nil {
+				t.Fatalf("Parse failed for query %q: %v", test.query, err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
 			}
 		})
 	}
