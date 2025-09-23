@@ -60,6 +60,15 @@ func main() {
 		"name:John Doe AND role:admin",
 		"name:John Doe OR name:Jane Smith",
 		"active:true AND NOT role:admin",
+		// Number range examples
+		"age:30",
+		"age:[25 TO 35]",
+		"age:>30",
+		"age:<30",
+		"age:>=30",
+		"age:<=30",
+		"age:[25 TO 35] AND active:true",
+		"age:>30 OR role:moderator",
 	}
 
 	fmt.Println("\n🔍 Testing BSON queries against real MongoDB data:")

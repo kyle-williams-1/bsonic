@@ -1168,9 +1168,19 @@ func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 		return p.parseDateRange(valueStr)
 	}
 
+	// Check for number range queries: [start TO end]
+	if p.isNumberRange(valueStr) {
+		return p.parseNumberRange(valueStr)
+	}
+
 	// Check for date comparison operators: >date, <date, >=date, <=date
 	if p.isDateComparison(valueStr) {
 		return p.parseDateComparison(valueStr)
+	}
+
+	// Check for number comparison operators: >5, <10, >=5, <=10
+	if p.isNumberComparison(valueStr) {
+		return p.parseNumberComparison(valueStr)
 	}
 
 	// Check for wildcards
@@ -1199,17 +1209,80 @@ func (p *Parser) parseValue(valueStr string) (interface{}, error) {
 
 // isDateRange checks if the value string is a date range query
 func (p *Parser) isDateRange(valueStr string) bool {
-	return strings.HasPrefix(valueStr, "[") &&
-		strings.HasSuffix(valueStr, "]") &&
-		strings.Contains(strings.ToUpper(valueStr), " TO ")
+	if !strings.HasPrefix(valueStr, "[") ||
+		!strings.HasSuffix(valueStr, "]") ||
+		!strings.Contains(strings.ToUpper(valueStr), " TO ") {
+		return false
+	}
+
+	// Extract the range content and check if it contains date-like patterns
+	rangeStr := strings.Trim(valueStr, "[]")
+	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
+	if len(parts) != 2 {
+		return false
+	}
+
+	startStr := strings.TrimSpace(parts[0])
+	endStr := strings.TrimSpace(parts[1])
+
+	// Check if either part looks like a date (contains dashes, slashes, or colons)
+	// and is not a pure number
+	hasDatePattern := func(s string) bool {
+		if s == "*" {
+			return false // wildcards don't indicate date type
+		}
+		// Check for date patterns: contains dashes, slashes, colons, or spaces
+		return strings.Contains(s, "-") ||
+			strings.Contains(s, "/") ||
+			strings.Contains(s, ":") ||
+			strings.Contains(s, " ") ||
+			strings.Contains(s, "T") // ISO format
+	}
+
+	return hasDatePattern(startStr) || hasDatePattern(endStr)
 }
 
 // isDateComparison checks if the value string is a date comparison operator
 func (p *Parser) isDateComparison(valueStr string) bool {
-	return strings.HasPrefix(valueStr, ">=") ||
+	if !strings.HasPrefix(valueStr, ">=") &&
+		!strings.HasPrefix(valueStr, "<=") &&
+		!strings.HasPrefix(valueStr, ">") &&
+		!strings.HasPrefix(valueStr, "<") {
+		return false
+	}
+
+	// Extract the value after the operator
+	var dateStr string
+	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") {
+		dateStr = valueStr[2:]
+	} else {
+		dateStr = valueStr[1:]
+	}
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Check if the value looks like a date (contains dashes, slashes, or colons)
+	return strings.Contains(dateStr, "-") ||
+		strings.Contains(dateStr, "/") ||
+		strings.Contains(dateStr, ":") ||
+		strings.Contains(dateStr, " ") ||
+		strings.Contains(dateStr, "T") // ISO format
+}
+
+// isNumberRange checks if the value string is a number range query
+func (p *Parser) isNumberRange(valueStr string) bool {
+	return strings.HasPrefix(valueStr, "[") &&
+		strings.HasSuffix(valueStr, "]") &&
+		strings.Contains(strings.ToUpper(valueStr), " TO ") &&
+		!p.isDateRange(valueStr) // Make sure it's not a date range
+}
+
+// isNumberComparison checks if the value string is a number comparison operator
+func (p *Parser) isNumberComparison(valueStr string) bool {
+	return (strings.HasPrefix(valueStr, ">=") ||
 		strings.HasPrefix(valueStr, "<=") ||
 		strings.HasPrefix(valueStr, ">") ||
-		strings.HasPrefix(valueStr, "<")
+		strings.HasPrefix(valueStr, "<")) &&
+		!p.isDateComparison(valueStr) // Make sure it's not a date comparison
 }
 
 // isBoolean checks if the value string is a boolean
@@ -1352,6 +1425,78 @@ func (p *Parser) parseDate(dateStr string) (time.Time, error) {
 	}
 
 	return time.Time{}, errors.New("unable to parse date: " + dateStr)
+}
+
+// parseNumberRange parses number range queries like [1 TO 10] or [1 TO *]
+func (p *Parser) parseNumberRange(valueStr string) (interface{}, error) {
+	rangeStr := strings.Trim(valueStr, "[]")
+	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
+	if len(parts) != 2 {
+		return nil, errors.New("invalid number range format: expected [start TO end]")
+	}
+
+	startStr := strings.TrimSpace(parts[0])
+	endStr := strings.TrimSpace(parts[1])
+
+	result := bson.M{}
+
+	// Handle start number (or wildcard)
+	if startStr == "*" {
+		if endStr == "*" {
+			return nil, errors.New("invalid number range: both start and end cannot be wildcards")
+		}
+		endNum, err := strconv.ParseFloat(endStr, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end number: %v", err)
+		}
+		result["$lte"] = endNum
+	} else {
+		startNum, err := strconv.ParseFloat(startStr, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start number: %v", err)
+		}
+		result["$gte"] = startNum
+
+		if endStr != "*" {
+			endNum, err := strconv.ParseFloat(endStr, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid end number: %v", err)
+			}
+			result["$lte"] = endNum
+		}
+	}
+
+	return result, nil
+}
+
+// parseNumberComparison parses number comparison queries like >5, <=10
+func (p *Parser) parseNumberComparison(valueStr string) (interface{}, error) {
+	var operator string
+	var numStr string
+
+	if strings.HasPrefix(valueStr, ">=") {
+		operator = "$gte"
+		numStr = valueStr[2:]
+	} else if strings.HasPrefix(valueStr, "<=") {
+		operator = "$lte"
+		numStr = valueStr[2:]
+	} else if strings.HasPrefix(valueStr, ">") {
+		operator = "$gt"
+		numStr = valueStr[1:]
+	} else if strings.HasPrefix(valueStr, "<") {
+		operator = "$lt"
+		numStr = valueStr[1:]
+	} else {
+		return nil, errors.New("invalid number comparison operator")
+	}
+
+	numStr = strings.TrimSpace(numStr)
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid number: %v", err)
+	}
+
+	return bson.M{operator: num}, nil
 }
 
 // unquote removes surrounding quotes if present
