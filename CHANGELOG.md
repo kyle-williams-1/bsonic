@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.0-beta.1]
+
+### Added
+- **Number range queries** with Lucene-style syntax
+- **Numeric comparison operators** (`>`, `<`, `>=`, `<=`)
+- **Range syntax** with `[start TO end]` for numeric fields
+- **Wildcard support** in number ranges (`[* TO end]`, `[start TO *]`)
+- **Decimal number support** for price ranges and precise numeric queries
+- **Complex number queries** combining ranges with logical operators
+
+### Features Implemented
+- `age:[18 TO 65]` - Number range queries using `$gte` and `$lte`
+- `price:[10.50 TO 99.99]` - Decimal number ranges
+- `score:>85` - Greater than comparisons using `$gt`
+- `score:<60` - Less than comparisons using `$lt`
+- `score:>=90` - Greater than or equal using `$gte`
+- `score:<=50` - Less than or equal using `$lte`
+- `age:[18 TO *]` - Open-ended ranges with wildcards
+- `age:[* TO 65]` - Lower-bound ranges with wildcards
+- `age:[18 TO 65] AND status:active` - Number ranges with field conditions
+- `age:>18 OR score:<60` - Multiple numeric comparisons with OR
+- `price:[0 TO 100] OR rating:[4 TO 5]` - Multiple number ranges with OR
+
+### API Changes
+- Enhanced `parseValue()` method to detect and parse number ranges
+- Added `isNumberRange()` and `isNumberComparison()` detection methods
+- Added `parseNumberRange()` and `parseNumberComparison()` parsing methods
+- Improved date detection to distinguish between date and number ranges
+- Enhanced type detection for better numeric vs date parsing
+
+### Documentation
+- Updated README.md with comprehensive number range examples
+- Added number range features to feature list
+- Updated integration tests with real MongoDB number range queries
+- Enhanced examples with number range demonstrations
+
+### Testing
+- Added comprehensive unit tests for number range functionality
+- Added integration tests for invalid number query handling
+- All existing tests continue to pass (no regressions)
+
 ## [v0.3.0-beta.1]
 
 ### Added

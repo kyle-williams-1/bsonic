@@ -812,6 +812,172 @@ func TestParseInvalidDateQueries(t *testing.T) {
 	}
 }
 
+func TestParseNumberRangeQueries(t *testing.T) {
+	parser := bsonic.New()
+
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "age:[18 TO 65]",
+			expected: bson.M{
+				"age": bson.M{
+					"$gte": 18.0,
+					"$lte": 65.0,
+				},
+			},
+			desc: "number range",
+		},
+		{
+			input: "price:[10.50 TO 99.99]",
+			expected: bson.M{
+				"price": bson.M{
+					"$gte": 10.50,
+					"$lte": 99.99,
+				},
+			},
+			desc: "decimal number range",
+		},
+		{
+			input: "age:[18 TO *]",
+			expected: bson.M{
+				"age": bson.M{
+					"$gte": 18.0,
+				},
+			},
+			desc: "number range with wildcard end",
+		},
+		{
+			input: "age:[* TO 65]",
+			expected: bson.M{
+				"age": bson.M{
+					"$lte": 65.0,
+				},
+			},
+			desc: "number range with wildcard start",
+		},
+		{
+			input: "score:>85",
+			expected: bson.M{
+				"score": bson.M{
+					"$gt": 85.0,
+				},
+			},
+			desc: "number greater than",
+		},
+		{
+			input: "score:<60",
+			expected: bson.M{
+				"score": bson.M{
+					"$lt": 60.0,
+				},
+			},
+			desc: "number less than",
+		},
+		{
+			input: "score:>=90",
+			expected: bson.M{
+				"score": bson.M{
+					"$gte": 90.0,
+				},
+			},
+			desc: "number greater than or equal",
+		},
+		{
+			input: "score:<=50",
+			expected: bson.M{
+				"score": bson.M{
+					"$lte": 50.0,
+				},
+			},
+			desc: "number less than or equal",
+		},
+		{
+			input: "age:[18 TO 65] AND status:active",
+			expected: bson.M{
+				"age": bson.M{
+					"$gte": 18.0,
+					"$lte": 65.0,
+				},
+				"status": "active",
+			},
+			desc: "number range with AND",
+		},
+		{
+			input: "age:>18 OR score:<60",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"age": bson.M{"$gt": 18.0}},
+					{"score": bson.M{"$lt": 60.0}},
+				},
+			},
+			desc: "number comparisons with OR",
+		},
+		{
+			input: "age:[18 TO 65] OR score:[80 TO 100]",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
+					{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
+				},
+			},
+			desc: "number ranges with OR",
+		},
+		{
+			input: "(age:[18 TO 65] OR score:[80 TO 100]) AND status:active",
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
+							{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
+						},
+					},
+					{"status": "active"},
+				},
+			},
+			desc: "number ranges with grouped status",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !compareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseInvalidNumberQueries(t *testing.T) {
+	parser := bsonic.New()
+
+	invalidQueries := []string{
+		"age:[invalid TO 65]",
+		"age:[18 TO invalid]",
+		"age:>invalid",
+		"age:[18 TO 65 TO 100]",
+		"age:[* TO *]",
+		"age:[18 TO 65 TO 100]",
+	}
+
+	for _, invalidQuery := range invalidQueries {
+		t.Run(invalidQuery, func(t *testing.T) {
+			_, err := parser.Parse(invalidQuery)
+			if err == nil {
+				t.Fatalf("Expected error for invalid number query '%s', got none", invalidQuery)
+			}
+		})
+	}
+}
+
 func TestParseParenthesesQueries(t *testing.T) {
 	parser := bsonic.New()
 

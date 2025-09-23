@@ -26,6 +26,7 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Logical operators**: Support for AND, OR, and NOT operations
 - **Grouping logic**: Parentheses support for complex query grouping and precedence control
 - **Date queries**: Full support for date range and comparison queries
+- **Number ranges**: Support for numeric range queries and comparisons
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
 - **Full-text search**: Support for MongoDB text search with configurable search modes
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
@@ -199,6 +200,48 @@ query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND status:activ
 
 query, _ := bsonic.Parse("created_at:>2024-01-01 OR updated_at:<2023-01-01")
 // BSON: {"$or": [{"created_at": {"$gt": "2024-01-01 00:00:00 +0000 UTC"}}, {"updated_at": {"$lt": "2023-01-01 00:00:00 +0000 UTC"}}]}
+```
+
+### Number Range Queries
+
+```go
+// Number ranges
+query, _ := bsonic.Parse("age:[18 TO 65]")
+// BSON: {"age": {"$gte": 18, "$lte": 65}}
+
+// Decimal number ranges
+query, _ := bsonic.Parse("price:[10.50 TO 99.99]")
+// BSON: {"price": {"$gte": 10.5, "$lte": 99.99}}
+
+// Number ranges with wildcards
+query, _ := bsonic.Parse("age:[18 TO *]")
+// BSON: {"age": {"$gte": 18}}
+
+query, _ := bsonic.Parse("age:[* TO 65]")
+// BSON: {"age": {"$lte": 65}}
+
+// Number comparisons
+query, _ := bsonic.Parse("score:>85")
+// BSON: {"score": {"$gt": 85}}
+
+query, _ := bsonic.Parse("score:<60")
+// BSON: {"score": {"$lt": 60}}
+
+query, _ := bsonic.Parse("score:>=90")
+// BSON: {"score": {"$gte": 90}}
+
+query, _ := bsonic.Parse("score:<=50")
+// BSON: {"score": {"$lte": 50}}
+
+// Complex number queries
+query, _ := bsonic.Parse("age:[18 TO 65] AND status:active")
+// BSON: {"age": {"$gte": 18, "$lte": 65}, "status": "active"}
+
+query, _ := bsonic.Parse("age:>18 OR score:<60")
+// BSON: {"$or": [{"age": {"$gt": 18}}, {"score": {"$lt": 60}}]}
+
+query, _ := bsonic.Parse("price:[0 TO 100] OR rating:[4 TO 5]")
+// BSON: {"$or": [{"price": {"$gte": 0, "$lte": 100}}, {"rating": {"$gte": 4, "$lte": 5}}]}
 ```
 
 ### Supported Date Formats

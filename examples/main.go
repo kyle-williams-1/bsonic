@@ -30,6 +30,17 @@ func main() {
 		"created_at:<=2023-12-31",
 		"created_at:[2023-01-01 TO 2023-12-31] AND status:active",
 		"created_at:>2024-01-01 OR updated_at:<2023-01-01",
+		// Number range examples
+		"age:25",
+		"age:[18 TO 65]",
+		"price:[10.50 TO 99.99]",
+		"score:>85",
+		"score:<60",
+		"score:>=90",
+		"score:<=50",
+		"age:[18 TO 65] AND status:active",
+		"age:>18 OR score:<60",
+		"price:[0 TO 100] OR rating:[4 TO 5]",
 		// Parentheses examples
 		"(name:john OR name:jane) AND age:25",
 		"name:john OR (name:jane AND age:25)",

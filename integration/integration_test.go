@@ -570,6 +570,186 @@ func TestComplexDateQueries(t *testing.T) {
 	}
 }
 
+// TestNumberRangeQueries tests number range queries
+func TestNumberRangeQueries(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "age range 25-35",
+			query:    "age:[25 TO 35]",
+			expected: 4, // John (30), Jane (28), Bob (35), Alice (25)
+		},
+		{
+			name:     "age greater than 30",
+			query:    "age:>30",
+			expected: 2, // Bob (35), Charlie (42)
+		},
+		{
+			name:     "age less than 30",
+			query:    "age:<30",
+			expected: 2, // Jane (28), Alice (25)
+		},
+		{
+			name:     "age greater than or equal 30",
+			query:    "age:>=30",
+			expected: 3, // John (30), Bob (35), Charlie (42)
+		},
+		{
+			name:     "age less than or equal 30",
+			query:    "age:<=30",
+			expected: 3, // John (30), Jane (28), Alice (25)
+		},
+		{
+			name:     "age range with wildcard start",
+			query:    "age:[* TO 30]",
+			expected: 3, // John (30), Jane (28), Alice (25)
+		},
+		{
+			name:     "age range with wildcard end",
+			query:    "age:[30 TO *]",
+			expected: 3, // John (30), Bob (35), Charlie (42)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
+// TestProductPriceQueries tests product price range queries
+func TestProductPriceQueries(t *testing.T) {
+	collection := testDB.Collection("products")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "price range 50-100",
+			query:    "price:[50 TO 100]",
+			expected: 2, // Wireless Headphones (99.99), Gaming Mouse (79.99)
+		},
+		{
+			name:     "price greater than 80",
+			query:    "price:>80",
+			expected: 1, // Wireless Headphones (99.99)
+		},
+		{
+			name:     "price less than 20",
+			query:    "price:<20",
+			expected: 1, // Coffee Mug (15.99)
+		},
+		{
+			name:     "price greater than or equal 80",
+			query:    "price:>=80",
+			expected: 1, // Wireless Headphones (99.99) - Gaming Mouse is 79.99 < 80
+		},
+		{
+			name:     "price less than or equal 80",
+			query:    "price:<=80",
+			expected: 2, // Gaming Mouse (79.99), Coffee Mug (15.99)
+		},
+		{
+			name:     "price range with wildcard start",
+			query:    "price:[* TO 80]",
+			expected: 2, // Gaming Mouse (79.99), Coffee Mug (15.99)
+		},
+		{
+			name:     "price range with wildcard end",
+			query:    "price:[80 TO *]",
+			expected: 1, // Wireless Headphones (99.99)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
+// TestComplexNumberQueries tests complex number queries with other conditions
+func TestComplexNumberQueries(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "age range with role filter",
+			query:    "age:[25 TO 35] AND role:admin",
+			expected: 1, // John (age 30, role admin)
+		},
+		{
+			name:     "age greater than 30 OR role moderator",
+			query:    "age:>30 OR role:moderator",
+			expected: 3, // Bob (35), Charlie (42), Alice (moderator)
+		},
+		{
+			name:     "age range with active status",
+			query:    "age:[25 TO 35] AND active:true",
+			expected: 3, // John (30, active), Jane (28, active), Alice (25, active) - all in range 25-35
+		},
+		{
+			name:     "age less than 30 AND active status",
+			query:    "age:<30 AND active:true",
+			expected: 2, // Jane (28, active), Alice (25, active)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
 // TestQueryPerformance tests query performance with larger datasets
 func TestQueryPerformance(t *testing.T) {
 	collection := testDB.Collection("users")
