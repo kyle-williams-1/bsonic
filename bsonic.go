@@ -1057,7 +1057,21 @@ func (p *Parser) handleNotNode(node *Node) bson.M {
 		return p.negateAndExpression(andClause.([]bson.M))
 	}
 
-	// For field:value pairs, negate each field
+	// Check if this is an implicit AND expression (multiple fields at the same level)
+	// This happens when we have NOT ((A AND B)) and the group returns {A: value1, B: value2}
+	// Only apply De Morgan's law if the child node is a group containing an AND node
+	// (not for simple multi-field AND expressions)
+	if len(childBSON) > 1 && node.Children[0].Type == NodeGroup &&
+		len(node.Children[0].Children) > 0 && node.Children[0].Children[0].Type == NodeAND {
+		// Convert the flat BSON to an array of conditions for De Morgan's law
+		var andConditions []bson.M
+		for k, v := range childBSON {
+			andConditions = append(andConditions, bson.M{k: v})
+		}
+		return p.negateAndExpression(andConditions)
+	}
+
+	// For single field:value pairs, negate each field
 	return p.negateFieldValuePairs(childBSON)
 }
 
@@ -1133,10 +1147,7 @@ func (p *Parser) combineAndConditions(andConditions []bson.M, directFields bson.
 func (p *Parser) negateConditions(conditions []bson.M) []bson.M {
 	var negatedConditions []bson.M
 	for _, condition := range conditions {
-		negatedCondition := bson.M{}
-		for k, v := range condition {
-			negatedCondition[k] = bson.M{"$ne": v}
-		}
+		negatedCondition := p.negateFieldValuePairs(condition)
 		negatedConditions = append(negatedConditions, negatedCondition)
 	}
 	return negatedConditions
@@ -1156,9 +1167,51 @@ func (p *Parser) negateAndExpression(andConditions []bson.M) bson.M {
 func (p *Parser) negateFieldValuePairs(childBSON bson.M) bson.M {
 	result := bson.M{}
 	for k, v := range childBSON {
-		result[k] = bson.M{"$ne": v}
+		// Check if the value is a range object (contains $gte, $lte, $gt, $lt but not $regex)
+		if rangeObj, isRange := v.(bson.M); isRange && p.isRangeObject(rangeObj) {
+			// Handle range objects by negating them properly
+			result[k] = p.negateRangeObject(rangeObj)
+		} else if regexObj, isRegex := v.(bson.M); isRegex && p.isRegexObject(regexObj) {
+			// Handle regex objects by using $not instead of $ne
+			result[k] = bson.M{"$not": regexObj}
+		} else {
+			// Handle simple field:value pairs
+			result[k] = bson.M{"$ne": v}
+		}
 	}
 	return result
+}
+
+// isRegexObject checks if a BSON object is a regex object (contains $regex)
+func (p *Parser) isRegexObject(obj bson.M) bool {
+	_, hasRegex := obj["$regex"]
+	return hasRegex
+}
+
+// isRangeObject checks if a BSON object is a range object (contains range operators)
+func (p *Parser) isRangeObject(obj bson.M) bool {
+	// Check for range operators
+	hasRangeOp := false
+	for key := range obj {
+		if key == "$gte" || key == "$lte" || key == "$gt" || key == "$lt" {
+			hasRangeOp = true
+			break
+		}
+	}
+
+	// Must have range operators and NOT have regex operators
+	_, hasRegex := obj["$regex"]
+	_, hasOptions := obj["$options"]
+
+	return hasRangeOp && !hasRegex && !hasOptions
+}
+
+// negateRangeObject negates a range object (e.g., {"$gte": 25, "$lte": 35})
+func (p *Parser) negateRangeObject(rangeObj bson.M) bson.M {
+	// For range objects, we need to use $not to properly negate
+	// NOT (field >= start AND field <= end) = field < start OR field > end
+	// We use $not to negate the range conditions
+	return bson.M{"$not": rangeObj}
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax

@@ -465,7 +465,7 @@ func TestComplexQueries(t *testing.T) {
 	}
 }
 
-// TestDateQueries tests date-based queries
+// TestDateQueries tests all date query functionality
 func TestDateQueries(t *testing.T) {
 	collection := testDB.Collection("users")
 
@@ -504,36 +504,7 @@ func TestDateQueries(t *testing.T) {
 			query:    "created_at:<=2023-02-01",
 			expected: 3, // Charlie (2022-08-30), Bob (2022-11-10), John (2023-01-15)
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bsonQuery, err := parser.Parse(tt.query)
-			if err != nil {
-				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
-			}
-
-			count, err := collection.CountDocuments(context.Background(), bsonQuery)
-			if err != nil {
-				t.Fatalf("Failed to execute query: %v", err)
-			}
-
-			if count != int64(tt.expected) {
-				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
-			}
-		})
-	}
-}
-
-// TestComplexDateQueries tests complex date queries with other conditions
-func TestComplexDateQueries(t *testing.T) {
-	collection := testDB.Collection("users")
-
-	tests := []struct {
-		name     string
-		query    string
-		expected int
-	}{
+		// Date queries with other conditions
 		{
 			name:     "date range with role filter",
 			query:    "created_at:[2023-01-01 TO 2023-12-31] AND role:admin",
@@ -548,6 +519,139 @@ func TestComplexDateQueries(t *testing.T) {
 			name:     "date range with name filter",
 			query:    "created_at:[2023-01-01 TO 2023-12-31] AND name:John*",
 			expected: 1, // John Doe
+		},
+		// Date queries in parentheses
+		{
+			name:     "date in single parentheses",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16])",
+			expected: 1, // John Doe (created 2023-01-15T10:30:00Z)
+		},
+		{
+			name:     "date range in parentheses",
+			query:    "(created_at:[2023-01-01 TO 2023-12-31])",
+			expected: 3, // John (2023-01-15), Jane (2023-02-20), Alice (2023-06-05)
+		},
+		{
+			name:     "date comparison in parentheses",
+			query:    "(created_at:>2023-06-01)",
+			expected: 1, // Alice (created 2023-06-05)
+		},
+		{
+			name:     "date in parentheses with AND",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16]) AND active:true",
+			expected: 1, // John (created 2023-01-15T10:30:00Z, active: true)
+		},
+		{
+			name:     "date range in parentheses with AND",
+			query:    "(created_at:[2023-01-01 TO 2023-12-31]) AND role:admin",
+			expected: 1, // John (created 2023-01-15, role: admin)
+		},
+		{
+			name:     "date comparison in parentheses with AND",
+			query:    "(created_at:>2023-06-01) AND active:true",
+			expected: 1, // Alice (created 2023-06-05, active: true)
+		},
+		{
+			name:     "date in parentheses with OR",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16]) OR (created_at:[2023-02-20 TO 2023-02-21])",
+			expected: 2, // John (2023-01-15T10:30:00Z), Jane (2023-02-20T09:15:00Z)
+		},
+		{
+			name:     "date range in parentheses with OR",
+			query:    "(created_at:[2023-01-01 TO 2023-03-31]) OR (created_at:[2023-06-01 TO 2023-12-31])",
+			expected: 3, // John (2023-01-15), Jane (2023-02-20), Alice (2023-06-05)
+		},
+		{
+			name:     "nested parentheses with date",
+			query:    "((created_at:[2023-01-15 TO 2023-01-16]) AND (name:John*))",
+			expected: 1, // John Doe (created 2023-01-15T10:30:00Z, name: John Doe)
+		},
+		{
+			name:     "complex nested parentheses with date range",
+			query:    "((created_at:[2023-01-01 TO 2023-12-31]) AND (role:admin)) OR ((created_at:>2023-06-01) AND (active:true))",
+			expected: 2, // John (admin, 2023-01-15), Alice (active, 2023-06-05)
+		},
+		// NOT operations with date queries
+		{
+			name:     "NOT with date in parentheses",
+			query:    "NOT (created_at:[2023-01-15 TO 2023-01-16])",
+			expected: 4, // All users except John (created 2023-01-15T10:30:00Z)
+		},
+		{
+			name:     "NOT with date range in parentheses",
+			query:    "NOT (created_at:[2023-01-01 TO 2023-12-31])",
+			expected: 2, // Charlie (2022-08-30), Bob (2022-11-10) - outside 2023
+		},
+		{
+			name:     "NOT with date comparison in parentheses",
+			query:    "NOT (created_at:>2023-06-01)",
+			expected: 4, // All users except Alice (created 2023-06-05)
+		},
+		{
+			name:     "NOT with date in parentheses AND condition",
+			query:    "NOT (created_at:[2023-01-15 TO 2023-01-16]) AND active:true",
+			expected: 3, // Jane (2023-02-20), Alice (2023-06-05), Charlie (2022-08-30) - all active except John
+		},
+		{
+			name:     "NOT with date range in parentheses AND condition",
+			query:    "NOT (created_at:[2023-01-01 TO 2023-12-31]) AND active:true",
+			expected: 1, // Charlie (2022-08-30, active: true) - only one outside 2023 and active
+		},
+		{
+			name:     "NOT with date comparison in parentheses AND condition",
+			query:    "NOT (created_at:>2023-06-01) AND role:admin",
+			expected: 2, // John (created 2023-01-15, role: admin) and Charlie (created 2022-08-30, role: admin)
+		},
+		{
+			name:     "NOT with nested parentheses and date",
+			query:    "NOT ((created_at:[2023-01-15 TO 2023-01-16]) AND (name:John*))",
+			expected: 4, // All users except John Doe
+		},
+		{
+			name:     "NOT with complex nested parentheses and date range",
+			query:    "NOT ((created_at:[2023-01-01 TO 2023-12-31]) AND (role:admin))",
+			expected: 4, // All users except John (admin in 2023)
+		},
+		// Mixed date and number queries in parentheses
+		{
+			name:     "date and age in parentheses with AND",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16]) AND (age:30)",
+			expected: 1, // John (created 2023-01-15T10:30:00Z, age: 30)
+		},
+		{
+			name:     "date range and age range in parentheses with AND",
+			query:    "(created_at:[2023-01-01 TO 2023-12-31]) AND (age:[25 TO 35])",
+			expected: 3, // John (30, 2023-01-15), Jane (28, 2023-02-20), Alice (25, 2023-06-05)
+		},
+		{
+			name:     "date comparison and age comparison in parentheses with AND",
+			query:    "(created_at:>2023-06-01) AND (age:<30)",
+			expected: 1, // Alice (created 2023-06-05, age: 25)
+		},
+		{
+			name:     "date and age in parentheses with OR",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16]) OR (age:42)",
+			expected: 2, // John (created 2023-01-15T10:30:00Z), Charlie (age: 42)
+		},
+		{
+			name:     "date range and age range in parentheses with OR",
+			query:    "(created_at:[2023-01-01 TO 2023-12-31]) OR (age:[40 TO 50])",
+			expected: 4, // John, Jane, Alice (2023 dates) + Charlie (age: 42)
+		},
+		{
+			name:     "NOT with date and age in parentheses",
+			query:    "NOT ((created_at:[2023-01-15 TO 2023-01-16]) AND (age:30))",
+			expected: 4, // All users except John
+		},
+		{
+			name:     "NOT with date range and age range in parentheses",
+			query:    "NOT ((created_at:[2023-01-01 TO 2023-12-31]) AND (age:[25 TO 35]))",
+			expected: 2, // Charlie (2022-08-30, age: 42), Bob (2022-11-10, age: 35) - both outside 2023 or outside age range
+		},
+		{
+			name:     "complex nested parentheses with date and age",
+			query:    "((created_at:[2023-01-01 TO 2023-12-31]) AND (age:[25 TO 35])) OR ((created_at:>2023-06-01) AND (age:<30))",
+			expected: 3, // John (30, 2023-01-15), Jane (28, 2023-02-20), Alice (25, 2023-06-05)
 		},
 	}
 

@@ -1142,33 +1142,41 @@ func TestParseNotWithAndExpressions(t *testing.T) {
 		{
 			input: "NOT (name:john AND age:25)",
 			expected: bson.M{
-				"name": bson.M{"$ne": "john"},
-				"age":  bson.M{"$ne": 25.0},
+				"$or": []bson.M{
+					{"name": bson.M{"$ne": "john"}},
+					{"age": bson.M{"$ne": 25.0}},
+				},
 			},
 			desc: "NOT with grouped AND",
 		},
 		{
 			input: "NOT (status:active AND role:admin AND age:30)",
 			expected: bson.M{
-				"status": bson.M{"$ne": "active"},
-				"role":   bson.M{"$ne": "admin"},
-				"age":    bson.M{"$ne": 30.0},
+				"$or": []bson.M{
+					{"status": bson.M{"$ne": "active"}},
+					{"role": bson.M{"$ne": "admin"}},
+					{"age": bson.M{"$ne": 30.0}},
+				},
 			},
 			desc: "NOT with multiple AND conditions",
 		},
 		{
 			input: "NOT (name:jo* AND age:25)",
 			expected: bson.M{
-				"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
-				"age":  bson.M{"$ne": 25.0},
+				"$or": []bson.M{
+					{"name": bson.M{"$not": bson.M{"$regex": "^jo.*", "$options": "i"}}},
+					{"age": bson.M{"$ne": 25.0}},
+				},
 			},
 			desc: "NOT with wildcard AND condition",
 		},
 		{
 			input: "NOT (created_at:>2024-01-01 AND status:active)",
 			expected: bson.M{
-				"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-				"status":     bson.M{"$ne": "active"},
+				"$or": []bson.M{
+					{"created_at": bson.M{"$not": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+					{"status": bson.M{"$ne": "active"}},
+				},
 			},
 			desc: "NOT with date comparison AND condition",
 		},
@@ -1547,8 +1555,8 @@ func TestParseNotWithOrExpressions(t *testing.T) {
 			input: "NOT (name:jo* OR name:ja*)",
 			expected: bson.M{
 				"$and": []bson.M{
-					{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}}},
-					{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*", "$options": "i"}}},
+					{"name": bson.M{"$not": bson.M{"$regex": "^jo.*", "$options": "i"}}},
+					{"name": bson.M{"$not": bson.M{"$regex": "^ja.*", "$options": "i"}}},
 				},
 			},
 			desc: "NOT with wildcard OR conditions",
@@ -1557,8 +1565,8 @@ func TestParseNotWithOrExpressions(t *testing.T) {
 			input: "NOT (created_at:>2024-01-01 OR updated_at:<2023-01-01)",
 			expected: bson.M{
 				"$and": []bson.M{
-					{"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
-					{"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+					{"created_at": bson.M{"$not": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+					{"updated_at": bson.M{"$not": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
 				},
 			},
 			desc: "NOT with date comparison OR conditions",
@@ -2390,7 +2398,7 @@ func TestNOTInParentheses(t *testing.T) {
 			name:  "NOT with complex field in parentheses",
 			query: "(NOT name:jo*) AND (NOT status:active)",
 			expected: bson.M{
-				"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
+				"name":   bson.M{"$not": bson.M{"$regex": "^jo.*", "$options": "i"}},
 				"status": bson.M{"$ne": "active"},
 			},
 			desc: "NOT with wildcard and simple field in parentheses",
@@ -2422,8 +2430,8 @@ func TestNOTInParentheses(t *testing.T) {
 			name:  "NOT with date comparison in parentheses",
 			query: "(NOT created_at:>2024-01-01) AND (NOT updated_at:<2023-01-01)",
 			expected: bson.M{
-				"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-				"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				"created_at": bson.M{"$not": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				"updated_at": bson.M{"$not": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
 			},
 			desc: "NOT with date comparisons in parentheses",
 		},
