@@ -13,6 +13,12 @@ Required dependencies for the BSON library and integration tests.
 - **Version**: v1.17.4 (defined in go.mod)
 - **Installation**: Automatically installed with `go mod download`
 
+### Go Lucene Parser
+- **Package**: `github.com/grindlemire/go-lucene`
+- **Version**: v0.0.21 (defined in go.mod)
+- **Purpose**: External library for Lucene query parsing
+- **Installation**: Automatically installed with `go mod download`
+
 ## Integration Testing Dependencies
 
 ### Docker

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.0-beta.1] - 2024-12-19
+
+### Changed
+- **Refactor**: Refactored to use external `go-lucene` library for parsing
+- **Refactor**: Removed custom parsing implementation in favor of battle-tested library
+
+### Added
+- **External library integration** with `github.com/grindlemire/go-lucene`
+- **Improved query preprocessing** with better handling of complex queries
+- **Enhanced error handling** with more specific error messages
+- **Comprehensive test coverage** (increased from 37.7% to 74.9%)
+- **Better BSON negation logic** for complex NOT expressions
+- **Improved range query support** with proper date parsing
+
+### Fixed
+- **NOT with parentheses parsing** - Fixed `NOT (role:admin OR role:moderator)` parsing
+- **Date range queries** - Fixed `created_at:[2023-01-15 TO 2023-01-16]` parsing
+- **Query validation** - Added proper validation for invalid queries
+- **Text search validation** - Added validation when text search is disabled
+- **BSON structure issues** - Fixed invalid BSON generation for complex queries
+
+### Technical Improvements
+- **Modular architecture** with clear separation of concerns
+- **Better maintainability** through external library usage
+- **Improved performance** through optimized parsing algorithms
+- **Enhanced test organization** with focused test files
+- **Removed code duplication** and unused functionality
+
+### Dependencies
+- **Added**: `github.com/grindlemire/go-lucene v0.0.21`
+- **Maintained**: `go.mongodb.org/mongo-driver v1.17.4`
+
 ## [v0.3.0-beta.1]
 
 ### Added

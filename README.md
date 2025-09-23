@@ -15,11 +15,12 @@
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver.
+A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver. Built on top of the battle-tested `go-lucene` library for robust parsing and comprehensive Lucene syntax support.
 
 ## Features
 
 - **Lucene-style syntax**: Write queries in familiar Lucene format
+- **Battle-tested parsing**: Built on the robust `go-lucene` library
 - **Field matching**: Support for exact matches and wildcard patterns
 - **Dot notation**: Query nested data structures using dot notation
 - **Array search**: Search within array fields
@@ -29,6 +30,7 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
 - **Full-text search**: Support for MongoDB text search with configurable search modes
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
+- **Comprehensive test coverage**: 74.9% test coverage with extensive integration tests
 
 ## Installation
 
@@ -327,6 +329,158 @@ query, _ := parser.Parse("devops role:admin OR name:charlie")
 - Field:value pairs are parsed as regular field searches
 - Both are combined with `$and` operator for precise filtering
 
+## How It Works
+
+Bsonic uses a multi-stage parsing pipeline to convert Lucene-style queries into MongoDB BSON documents. Here's the complete flow:
+
+### Parsing Pipeline
+
+```mermaid
+graph TD
+    A[Raw Query String] --> B[Query Preprocessor]
+    B --> C{Text Search Query?}
+    C -->|Yes| D[Text Search Mode Check]
+    C -->|No| E[go-lucene Parser]
+    D -->|Enabled| F[Generate $text BSON]
+    D -->|Disabled| G[Return Error]
+    E --> H[AST Generation]
+    H --> I[BSON Driver]
+    I --> J[BSON Document]
+    
+    B --> B1[Fix Mixed Queries]
+    B --> B2[Quote Field Values]
+    B --> B3[Process Parentheses]
+    B --> B4[Handle Dot Notation]
+    
+    I --> I1[Handle Logical Operators]
+    I --> I2[Convert Field Queries]
+    I --> I3[Process Wildcards]
+    I --> I4[Parse Date Ranges]
+    I --> I5[Apply NOT Logic]
+```
+
+### Stage-by-Stage Breakdown
+
+#### 1. **Query Preprocessing** (`QueryPreprocessor`)
+The preprocessor fixes common parsing issues before the query reaches the Lucene parser:
+
+- **Mixed Query Detection**: Identifies queries combining text search with field:value pairs
+- **Email Field Handling**: Properly quotes email addresses in field values
+- **Dot Notation Processing**: Handles nested field references (e.g., `user.profile.email`)
+- **Parentheses Processing**: Ensures proper spacing around parentheses
+- **Value Quoting**: Quotes values containing spaces while preserving range syntax
+
+**Example:**
+```
+Input:  "engineer name:john doe"
+Output: "engineer AND name:\"john doe\""
+```
+
+#### 2. **Text Search Detection** (`Parser`)
+Determines if the query should use MongoDB text search or field-based search:
+
+- **Text Search Query**: No field:value pairs detected
+- **Field Search Query**: Contains field:value pairs
+- **Mode Validation**: Ensures text search is enabled for text queries
+
+**Examples:**
+```
+"engineer software"           → Text search (if enabled)
+"name:john"                   → Field search
+"engineer name:john"          → Mixed query (text + field)
+```
+
+#### 3. **Lucene Parsing** (`go-lucene` library)
+Converts the preprocessed query into an Abstract Syntax Tree (AST):
+
+- **Tokenization**: Breaks query into tokens
+- **Syntax Analysis**: Validates Lucene syntax
+- **AST Generation**: Creates structured representation
+- **Error Handling**: Provides detailed parsing errors
+
+**Example AST for `name:john AND age:25`:**
+```
+AND
+├── Equals(name="name", value="john")
+└── Equals(name="age", value="25")
+```
+
+#### 4. **BSON Conversion** (`BSONDriver`)
+Traverses the AST and converts it to MongoDB BSON:
+
+- **Expression Handling**: Processes different AST node types
+- **Type Detection**: Automatically detects booleans, numbers, dates
+- **Operator Mapping**: Converts Lucene operators to MongoDB operators
+- **Complex Logic**: Handles NOT, OR, AND with proper BSON structure
+
+**Example Conversion:**
+```
+AST: AND(Equals("name", "john"), Equals("age", 25))
+BSON: {"name": "john", "age": 25}
+```
+
+### Special Case Handling
+
+#### **NOT Expressions**
+Complex NOT logic is handled using De Morgan's laws:
+
+```go
+// Input: NOT (name:john OR name:jane)
+// Output: {"$and": [{"name": {"$ne": "john"}}, {"name": {"$ne": "jane"}}]}
+```
+
+#### **Range Queries**
+Date and numeric ranges are converted to MongoDB range operators:
+
+```go
+// Input: age:[18 TO 65]
+// Output: {"age": {"$gte": 18, "$lte": 65}}
+```
+
+#### **Wildcard Queries**
+Wildcards are converted to MongoDB regex patterns:
+
+```go
+// Input: name:jo*
+// Output: {"name": {"$regex": "jo.*", "$options": "i"}}
+```
+
+#### **Mixed Queries**
+Text search combined with field queries:
+
+```go
+// Input: engineer name:john
+// Output: {"$and": [{"$text": {"$search": "engineer"}}, {"name": "john"}]}
+```
+
+### Error Handling
+
+The pipeline includes comprehensive error handling at each stage:
+
+- **Preprocessing Errors**: Invalid query structure
+- **Parsing Errors**: Malformed Lucene syntax
+- **Validation Errors**: Text search when disabled
+- **Conversion Errors**: Unsupported query types
+
+## Performance
+
+Bsonic is built for performance and reliability:
+
+- **Fast parsing**: Uses the optimized `go-lucene` library
+- **Memory efficient**: Minimal allocations in hot paths
+- **Comprehensive testing**: 74.9% test coverage with extensive integration tests
+- **Battle-tested**: Built on proven, community-maintained libraries
+
+### Benchmarking
+```bash
+# Run performance benchmarks
+go test -bench=.
+
+# Memory profiling
+go test -bench=. -memprofile=mem.prof
+go tool pprof mem.prof
+```
+
 ## Integration Testing
 
 This library includes comprehensive integration tests that run against a real MongoDB instance.
@@ -348,7 +502,16 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Dependencies
 
-See [DEPENDENCIES.md](DEPENDENCIES.md) for information about required and optional dependencies.
+### Required
+- **Go**: 1.25 or later
+- **MongoDB Go Driver**: v1.17.4 (for BSON types)
+- **Go Lucene Parser**: v0.0.21 (for Lucene query parsing)
+
+### Optional
+- **Docker**: For integration testing
+- **MongoDB**: For integration testing
+
+See [DEPENDENCIES.md](DEPENDENCIES.md) for detailed installation instructions.
 
 ## Changelog
 

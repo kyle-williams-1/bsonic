@@ -420,6 +420,66 @@ func TestProductQueries(t *testing.T) {
 	}
 }
 
+// TestNumericRangeQueries tests numeric range queries
+func TestNumericRangeQueries(t *testing.T) {
+	collection := testDB.Collection("users")
+
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "age range 25-35",
+			query:    "age:[25 TO 35]",
+			expected: 4, // John (30), Jane (28), Bob (35), Alice (25)
+		},
+		{
+			name:     "age range 30-40",
+			query:    "age:[30 TO 40]",
+			expected: 2, // John (30), Bob (35)
+		},
+		{
+			name:     "age greater than 30",
+			query:    "age:[30 TO *]",
+			expected: 3, // John (30), Bob (35), Charlie (42)
+		},
+		{
+			name:     "age less than 30",
+			query:    "age:[* TO 30]",
+			expected: 3, // Jane (28), Alice (25), John (30)
+		},
+		{
+			name:     "age range with AND",
+			query:    "age:[25 TO 35] AND role:user",
+			expected: 2, // Jane (28, user), Bob (35, user)
+		},
+		{
+			name:     "age range with OR",
+			query:    "age:[25 TO 30] OR age:[35 TO 40]",
+			expected: 4, // Jane (28), Alice (25), John (30), Bob (35)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bsonQuery, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			count, err := collection.CountDocuments(context.Background(), bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+
+			if count != int64(tt.expected) {
+				t.Errorf("Expected %d documents, got %d for query: %s", tt.expected, count, tt.query)
+			}
+		})
+	}
+}
+
 // TestComplexQueries tests complex nested queries
 func TestComplexQueries(t *testing.T) {
 	collection := testDB.Collection("orders")

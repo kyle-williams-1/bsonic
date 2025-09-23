@@ -30,6 +30,12 @@ func main() {
 		"created_at:<=2023-12-31",
 		"created_at:[2023-01-01 TO 2023-12-31] AND status:active",
 		"created_at:>2024-01-01 OR updated_at:<2023-01-01",
+		// Numeric range examples
+		"age:[18 TO 65]",
+		"score:[80 TO 100]",
+		"price:[10.50 TO 99.99]",
+		"age:[18 TO *]",
+		"age:[* TO 65]",
 		// Parentheses examples
 		"(name:john OR name:jane) AND age:25",
 		"name:john OR (name:jane AND age:25)",
@@ -37,6 +43,9 @@ func main() {
 		"NOT (name:john OR name:jane)",
 		"(name:jo* OR name:ja*) AND (age:25 OR age:30)",
 		"created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)",
+		// Text search examples (requires NewWithTextSearch())
+		// "engineer software",  // Uncomment to test text search
+		// "engineer name:john", // Uncomment to test mixed queries
 	}
 
 	fmt.Println("Bsonic - Lucene-style MongoDB BSON Parser")
