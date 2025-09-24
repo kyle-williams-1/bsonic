@@ -4,7 +4,7 @@ linters:
   enable:
     - govet
 
-settings:
+linters-settings:
   govet:
     disable:
       - structtag
