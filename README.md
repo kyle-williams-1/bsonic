@@ -81,7 +81,7 @@ query, _ := bsonic.Parse("name:john")
 
 // Wildcard patterns
 query, _ := bsonic.Parse("name:jo*")
-// BSON: {"name": {"$regex": "jo.*", "$options": "i"}}
+// BSON: {"name": {"$regex": "^jo.*", "$options": "i"}}
 
 // Quoted values with spaces
 query, _ := bsonic.Parse(`name:"john doe"`)
@@ -119,7 +119,7 @@ query, _ := bsonic.Parse("name:john AND NOT age:25")
 
 // Complex combinations
 query, _ := bsonic.Parse("name:jo* OR name:ja* AND NOT age:18")
-// BSON: {"$or": [{"name": {"$regex": "jo.*", "$options": "i"}}, {"name": {"$regex": "ja.*", "$options": "i"}}], "age": {"$ne": 18}}
+// BSON: {"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}], "age": {"$ne": 18}}
 ```
 
 ### Grouping Logic with Parentheses
@@ -154,7 +154,7 @@ query, _ := bsonic.Parse("((name:john OR name:jane) AND age:25) OR status:active
 
 // Grouped wildcards and numbers
 query, _ := bsonic.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
-// BSON: {"$and": [{"$or": [{"name": {"$regex": "jo.*", "$options": "i"}}, {"name": {"$regex": "ja.*", "$options": "i"}}]}, {"$or": [{"age": 25}, {"age": 30}]}]}
+// BSON: {"$and": [{"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}]}, {"$or": [{"age": 25}, {"age": 30}]}]}
 
 // Date range with grouped status
 query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
