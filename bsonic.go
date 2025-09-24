@@ -142,12 +142,6 @@ func Parse(query string) (bson.M, error) {
 }
 
 // Parse converts a Lucene-style query string into a BSON document.
-// The parsing process follows these steps:
-// 1. Check if query should use text search or field searches
-// 2. Tokenize the query string into tokens (field:value pairs, operators, parentheses)
-// 3. Validate that parentheses are properly matched
-// 4. Build an Abstract Syntax Tree (AST) from the tokens with proper operator precedence
-// 5. Convert the AST to MongoDB BSON format
 func (p *Parser) Parse(query string) (bson.M, error) {
 	if strings.TrimSpace(query) == "" {
 		return bson.M{}, nil
@@ -171,14 +165,10 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 	}
 
 	// Text search is disabled, parse as regular field query
-	return p.parseFieldQueryInternal(query)
+	return p.parseFieldQuery(query)
 }
 
 // shouldUseTextSearch determines if a query should use text search instead of field searches.
-// Text search is used when:
-// 1. SearchMode is SearchModeText
-// 2. The query contains no field:value pairs (no colons)
-// 3. The query is not empty and contains search terms
 func (p *Parser) shouldUseTextSearch(query string) bool {
 	if p.SearchMode != SearchModeText {
 		return false
@@ -223,7 +213,6 @@ func (p *Parser) parseTextSearch(query string) (bson.M, error) {
 }
 
 // isMixedQuery determines if a query contains both field searches and text search terms.
-// A mixed query contains both field:value pairs and standalone text terms.
 func (p *Parser) isMixedQuery(query string) bool {
 	if p.SearchMode != SearchModeText {
 		return false
@@ -256,14 +245,12 @@ func (p *Parser) isMixedQuery(query string) bool {
 }
 
 // parseMixedQuery parses a mixed query containing both field searches and text search.
-// This parses the query to identify field:value pairs vs text terms and combines them.
 func (p *Parser) parseMixedQuery(query string) (bson.M, error) {
 	trimmed := strings.TrimSpace(query)
 	if trimmed == "" {
 		return bson.M{}, nil
 	}
 
-	// Simple approach: split the query into parts and separate field queries from text terms
 	parts := strings.Fields(trimmed)
 	var fieldParts []string
 	var textParts []string
@@ -278,7 +265,6 @@ func (p *Parser) parseMixedQuery(query string) (bson.M, error) {
 
 	var conditions []bson.M
 
-	// Add field search conditions
 	if len(fieldParts) > 0 {
 		fieldQuery := strings.Join(fieldParts, " ")
 		fieldBSON, err := p.parseFieldQuery(fieldQuery)
@@ -288,52 +274,38 @@ func (p *Parser) parseMixedQuery(query string) (bson.M, error) {
 		conditions = append(conditions, fieldBSON)
 	}
 
-	// Add text search condition
 	if len(textParts) > 0 {
 		textQuery := strings.Join(textParts, " ")
-		textBSON := bson.M{"$text": bson.M{"$search": textQuery}}
-		conditions = append(conditions, textBSON)
+		conditions = append(conditions, bson.M{"$text": bson.M{"$search": textQuery}})
 	}
 
-	// Combine conditions
 	if len(conditions) == 0 {
 		return bson.M{}, nil
 	} else if len(conditions) == 1 {
 		return conditions[0], nil
-	} else {
-		return bson.M{"$and": conditions}, nil
 	}
+	return bson.M{"$and": conditions}, nil
 }
 
 // parseFieldQuery parses a field-only query (without text search terms).
 func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
-	return p.parseFieldQueryInternal(query)
-}
-
-// parseFieldQueryInternal contains the core field parsing logic without SearchMode checks
-func (p *Parser) parseFieldQueryInternal(query string) (bson.M, error) {
 	if strings.TrimSpace(query) == "" {
 		return bson.M{}, nil
 	}
 
-	// If text search is disabled, validate that the query doesn't contain standalone text terms
 	if p.SearchMode != SearchModeText {
 		if err := p.validateFieldQuery(query); err != nil {
 			return nil, err
 		}
 	}
 
-	// Parse using Participle
 	ast, err := participleParser.ParseString("", query)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert the Participle AST to MongoDB BSON format
 	return p.participleASTToBSON(ast), nil
 }
-
-// Participle AST to BSON conversion methods
 
 // participleASTToBSON converts a Participle AST to MongoDB BSON format
 func (p *Parser) participleASTToBSON(query *ParticipleQuery) bson.M {
@@ -370,50 +342,42 @@ func (p *Parser) participleAndExpressionToBSON(andExpr *ParticipleAndExpression)
 		return p.participleNotExpressionToBSON(andExpr.And[0])
 	}
 
-	// For multiple AND conditions, check if we have any complex expressions
-	var andConditions []bson.M
+	var conditions []bson.M
 	directFields := bson.M{}
 	hasComplexExpressions := false
 
 	for _, notExpr := range andExpr.And {
 		childBSON := p.participleNotExpressionToBSON(notExpr)
 
-		// Check if this is a complex expression (has $or, $and, etc.)
-		if p.isComplexExpression(childBSON) {
-			hasComplexExpressions = true
-			andConditions = append(andConditions, childBSON)
-		} else if p.isSimpleFieldValue(childBSON) {
-			// Only merge simple field:value pairs if we don't have complex expressions
-			if !hasComplexExpressions {
-				// Check if we already have this field
-				for k := range childBSON {
-					if _, exists := directFields[k]; exists {
-						// Field already exists, don't merge - add as separate condition
-						andConditions = append(andConditions, childBSON)
-						goto nextCondition
-					}
+		if p.isSimpleFieldValue(childBSON) {
+			// Check for field conflicts
+			hasConflict := false
+			for k := range childBSON {
+				if _, exists := directFields[k]; exists {
+					hasConflict = true
+					break
 				}
-				// No conflict, merge the field
+			}
+
+			if !hasConflict && !hasComplexExpressions {
+				// Merge simple field:value pairs directly only if no complex expressions
 				for k, v := range childBSON {
 					directFields[k] = v
 				}
 			} else {
-				// If we have complex expressions, add simple fields as separate conditions
-				andConditions = append(andConditions, childBSON)
+				conditions = append(conditions, childBSON)
 			}
 		} else {
-			// Add as a separate condition
-			andConditions = append(andConditions, childBSON)
+			hasComplexExpressions = true
+			conditions = append(conditions, childBSON)
 		}
-	nextCondition:
 	}
 
-	// Combine direct fields and other conditions
-	if len(directFields) > 0 && len(andConditions) > 0 {
-		andConditions = append(andConditions, directFields)
-		return bson.M{"$and": andConditions}
-	} else if len(andConditions) > 0 {
-		return bson.M{"$and": andConditions}
+	if len(directFields) > 0 && len(conditions) > 0 {
+		conditions = append(conditions, directFields)
+		return bson.M{"$and": conditions}
+	} else if len(conditions) > 0 {
+		return bson.M{"$and": conditions}
 	} else {
 		return directFields
 	}
@@ -453,10 +417,8 @@ func (p *Parser) participleTermToBSON(term *ParticipleTerm) bson.M {
 
 // participleFieldValueToBSON converts a ParticipleFieldValue to BSON
 func (p *Parser) participleFieldValueToBSON(fv *ParticipleFieldValue) bson.M {
-	// Get the actual value string from the ParticipleValue
 	var valueStr string
 	if len(fv.Value.TextTerms) > 0 {
-		// Join multiple text terms with spaces for values like "John Doe" or "San Francisco, CA"
 		valueStr = strings.Join(fv.Value.TextTerms, " ")
 	} else if fv.Value.String != nil {
 		valueStr = *fv.Value.String
@@ -470,244 +432,163 @@ func (p *Parser) participleFieldValueToBSON(fv *ParticipleFieldValue) bson.M {
 		valueStr = *fv.Value.TimeString
 	}
 
-	// Parse the value using the existing parseValue logic
 	value, err := p.parseValue(valueStr)
 	if err != nil {
-		// If parsing fails, treat as string
 		value = valueStr
 	}
 	return bson.M{fv.Field: value}
 }
 
-// negateBSON negates a BSON condition (used by Participle AST)
+// negateBSON negates a BSON condition using De Morgan's law
 func (p *Parser) negateBSON(condition bson.M) bson.M {
-	// Handle NOT with OR expressions using De Morgan's law
 	if orClause, hasOr := condition["$or"]; hasOr {
-		return p.negateOrExpression(orClause.([]bson.M))
+		return bson.M{"$and": p.negateConditions(orClause.([]bson.M))}
 	}
 
-	// Handle NOT with AND expressions using De Morgan's law
 	if andClause, hasAnd := condition["$and"]; hasAnd {
-		return p.negateAndExpression(andClause.([]bson.M))
+		return bson.M{"$or": p.negateConditions(andClause.([]bson.M))}
 	}
 
-	// For field:value pairs, negate each field
-	return p.negateFieldValuePairs(condition)
-}
-
-// negateOrExpression negates an OR expression using De Morgan's law: NOT (A OR B) = (NOT A) AND (NOT B)
-func (p *Parser) negateOrExpression(orConditions []bson.M) bson.M {
-	return bson.M{"$and": p.negateConditions(orConditions)}
-}
-
-// negateAndExpression negates an AND expression using De Morgan's law: NOT (A AND B) = (NOT A) OR (NOT B)
-func (p *Parser) negateAndExpression(andConditions []bson.M) bson.M {
-	return bson.M{"$or": p.negateConditions(andConditions)}
-}
-
-// negateConditions negates a list of conditions by adding $ne operators to each field
-func (p *Parser) negateConditions(conditions []bson.M) []bson.M {
-	var negatedConditions []bson.M
-	for _, condition := range conditions {
-		negatedCondition := bson.M{}
-		for k, v := range condition {
-			negatedCondition[k] = bson.M{"$ne": v}
-		}
-		negatedConditions = append(negatedConditions, negatedCondition)
-	}
-	return negatedConditions
-}
-
-// negateFieldValuePairs negates field:value pairs by adding $ne operators
-func (p *Parser) negateFieldValuePairs(childBSON bson.M) bson.M {
 	result := bson.M{}
-	for k, v := range childBSON {
+	for k, v := range condition {
 		result[k] = bson.M{"$ne": v}
+	}
+	return result
+}
+
+// negateConditions negates a list of conditions by adding $ne operators
+func (p *Parser) negateConditions(conditions []bson.M) []bson.M {
+	var result []bson.M
+	for _, condition := range conditions {
+		negated := bson.M{}
+		for k, v := range condition {
+			negated[k] = bson.M{"$ne": v}
+		}
+		result = append(result, negated)
 	}
 	return result
 }
 
 // isSimpleFieldValue checks if a BSON condition is a simple field:value pair
 func (p *Parser) isSimpleFieldValue(condition bson.M) bool {
-	// Must have exactly one field
 	if len(condition) != 1 {
 		return false
 	}
 
-	// Check that the value is not a complex operator
+	// Check if the condition itself has complex operators
+	if _, hasOr := condition["$or"]; hasOr {
+		return false
+	}
+	if _, hasAnd := condition["$and"]; hasAnd {
+		return false
+	}
+
+	// Check if any field value contains complex operators
 	for _, v := range condition {
 		if vMap, ok := v.(bson.M); ok {
-			// If it's a map, check if it contains MongoDB operators
 			for key := range vMap {
-				// Allow $ne (NOT operations), $regex (wildcard operations), and range operators to be merged
-				// but not other complex operators
 				if key == "$or" || key == "$and" {
 					return false
 				}
 			}
 		}
 	}
-
 	return true
-}
-
-// isComplexExpression checks if a BSON condition is a complex expression (has $or, $and, etc.)
-func (p *Parser) isComplexExpression(condition bson.M) bool {
-	// Check if any field has complex operators
-	for _, v := range condition {
-		if vMap, ok := v.(bson.M); ok {
-			// If it's a map, check if it contains complex operators
-			for key := range vMap {
-				if key == "$or" || key == "$and" {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check if the condition itself has complex operators
-	if _, hasOr := condition["$or"]; hasOr {
-		return true
-	}
-	if _, hasAnd := condition["$and"]; hasAnd {
-		return true
-	}
-
-	return false
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
 func (p *Parser) parseValue(valueStr string) (interface{}, error) {
-	// Check for date range queries: [start TO end]
-	if p.isDateRange(valueStr) {
-		return p.parseDateRange(valueStr)
+	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
+		return p.parseRange(valueStr)
 	}
 
-	// Check for number range queries: [start TO end]
-	if p.isNumberRange(valueStr) {
-		return p.parseNumberRange(valueStr)
+	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
+		return p.parseComparison(valueStr)
 	}
 
-	// Check for date comparison operators: >date, <date, >=date, <=date
-	if p.isDateComparison(valueStr) {
-		return p.parseDateComparison(valueStr)
-	}
-
-	// Check for number comparison operators: >5, <10, >=5, <=10
-	if p.isNumberComparison(valueStr) {
-		return p.parseNumberComparison(valueStr)
-	}
-
-	// Check for wildcards
 	if strings.Contains(valueStr, "*") {
 		return p.parseWildcard(valueStr)
 	}
 
-	// Try to parse as a date
 	if date, err := p.parseDate(valueStr); err == nil {
 		return date, nil
 	}
 
-	// Check if it's a number
 	if num, err := strconv.ParseFloat(valueStr, 64); err == nil {
 		return num, nil
 	}
 
-	// Check if it's a boolean
-	if p.isBoolean(valueStr) {
-		return p.parseBoolean(valueStr)
+	if valueStr == "true" || valueStr == "false" {
+		return valueStr == "true", nil
 	}
 
-	// Default to string
 	return valueStr, nil
 }
 
-// isDateRange checks if the value string is a date range query
-func (p *Parser) isDateRange(valueStr string) bool {
-	if !strings.HasPrefix(valueStr, "[") ||
-		!strings.HasSuffix(valueStr, "]") ||
-		!strings.Contains(strings.ToUpper(valueStr), " TO ") {
-		return false
-	}
-
-	// Extract the range content and check if it contains date-like patterns
+// parseRange parses range queries like [start TO end] for both dates and numbers
+func (p *Parser) parseRange(valueStr string) (interface{}, error) {
 	rangeStr := strings.Trim(valueStr, "[]")
 	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
 	if len(parts) != 2 {
-		return false
+		return nil, errors.New("invalid range format: expected [start TO end]")
 	}
 
 	startStr := strings.TrimSpace(parts[0])
 	endStr := strings.TrimSpace(parts[1])
 
-	// Check if either part looks like a date (contains dashes, slashes, or colons)
-	// and is not a pure number
-	hasDatePattern := func(s string) bool {
-		if s == "*" {
-			return false // wildcards don't indicate date type
-		}
-		// Check for date patterns: contains dashes, slashes, colons, or spaces
-		return strings.Contains(s, "-") ||
-			strings.Contains(s, "/") ||
-			strings.Contains(s, ":") ||
-			strings.Contains(s, " ") ||
-			strings.Contains(s, "T") // ISO format
+	if p.isDateLike(startStr) || p.isDateLike(endStr) {
+		return p.parseDateRange(startStr, endStr)
 	}
 
-	return hasDatePattern(startStr) || hasDatePattern(endStr)
+	return p.parseNumberRange(startStr, endStr)
 }
 
-// isDateComparison checks if the value string is a date comparison operator
-func (p *Parser) isDateComparison(valueStr string) bool {
-	if !strings.HasPrefix(valueStr, ">=") &&
-		!strings.HasPrefix(valueStr, "<=") &&
-		!strings.HasPrefix(valueStr, ">") &&
-		!strings.HasPrefix(valueStr, "<") {
+// parseComparison parses comparison operators like >value, <value, >=value, <=value
+func (p *Parser) parseComparison(valueStr string) (interface{}, error) {
+	var operator string
+	var value string
+
+	if strings.HasPrefix(valueStr, ">=") {
+		operator = "$gte"
+		value = valueStr[2:]
+	} else if strings.HasPrefix(valueStr, "<=") {
+		operator = "$lte"
+		value = valueStr[2:]
+	} else if strings.HasPrefix(valueStr, ">") {
+		operator = "$gt"
+		value = valueStr[1:]
+	} else if strings.HasPrefix(valueStr, "<") {
+		operator = "$lt"
+		value = valueStr[1:]
+	} else {
+		return nil, errors.New("invalid comparison operator")
+	}
+
+	value = strings.TrimSpace(value)
+
+	if p.isDateLike(value) {
+		date, err := p.parseDate(value)
+		if err != nil {
+			return nil, err
+		}
+		return bson.M{operator: date}, nil
+	}
+
+	num, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid number: %v", err)
+	}
+	return bson.M{operator: num}, nil
+}
+
+// isDateLike checks if a string looks like a date
+func (p *Parser) isDateLike(s string) bool {
+	if s == "*" {
 		return false
 	}
-
-	// Extract the value after the operator
-	var dateStr string
-	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") {
-		dateStr = valueStr[2:]
-	} else {
-		dateStr = valueStr[1:]
-	}
-	dateStr = strings.TrimSpace(dateStr)
-
-	// Check if the value looks like a date (contains dashes, slashes, or colons)
-	return strings.Contains(dateStr, "-") ||
-		strings.Contains(dateStr, "/") ||
-		strings.Contains(dateStr, ":") ||
-		strings.Contains(dateStr, " ") ||
-		strings.Contains(dateStr, "T") // ISO format
-}
-
-// isNumberRange checks if the value string is a number range query
-func (p *Parser) isNumberRange(valueStr string) bool {
-	return strings.HasPrefix(valueStr, "[") &&
-		strings.HasSuffix(valueStr, "]") &&
-		strings.Contains(strings.ToUpper(valueStr), " TO ") &&
-		!p.isDateRange(valueStr) // Make sure it's not a date range
-}
-
-// isNumberComparison checks if the value string is a number comparison operator
-func (p *Parser) isNumberComparison(valueStr string) bool {
-	return (strings.HasPrefix(valueStr, ">=") ||
-		strings.HasPrefix(valueStr, "<=") ||
-		strings.HasPrefix(valueStr, ">") ||
-		strings.HasPrefix(valueStr, "<")) &&
-		!p.isDateComparison(valueStr) // Make sure it's not a date comparison
-}
-
-// isBoolean checks if the value string is a boolean
-func (p *Parser) isBoolean(valueStr string) bool {
-	return valueStr == "true" || valueStr == "false"
-}
-
-// parseBoolean parses a boolean value
-func (p *Parser) parseBoolean(valueStr string) (bool, error) {
-	return valueStr == "true", nil
+	return strings.Contains(s, "-") || strings.Contains(s, "/") ||
+		strings.Contains(s, ":") || strings.Contains(s, " ") ||
+		strings.Contains(s, "T")
 }
 
 // parseWildcard parses a wildcard pattern and returns a regex BSON query
@@ -746,20 +627,10 @@ func (p *Parser) isStartsWithPattern(valueStr string) bool {
 	return !strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
 }
 
-// parseDateRange parses date range queries like [2023-01-01 TO 2023-12-31] or [2023-01-01 TO *]
-func (p *Parser) parseDateRange(valueStr string) (interface{}, error) {
-	rangeStr := strings.Trim(valueStr, "[]")
-	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
-	if len(parts) != 2 {
-		return nil, errors.New("invalid date range format: expected [start TO end]")
-	}
-
-	startStr := strings.TrimSpace(parts[0])
-	endStr := strings.TrimSpace(parts[1])
-
+// parseDateRange parses date range queries
+func (p *Parser) parseDateRange(startStr, endStr string) (interface{}, error) {
 	result := bson.M{}
 
-	// Handle start date (or wildcard)
 	if startStr == "*" {
 		if endStr == "*" {
 			return nil, errors.New("invalid date range: both start and end cannot be wildcards")
@@ -788,36 +659,6 @@ func (p *Parser) parseDateRange(valueStr string) (interface{}, error) {
 	return result, nil
 }
 
-// parseDateComparison parses date comparison queries like >2024-01-01, <=2023-12-31
-func (p *Parser) parseDateComparison(valueStr string) (interface{}, error) {
-	var operator string
-	var dateStr string
-
-	if strings.HasPrefix(valueStr, ">=") {
-		operator = "$gte"
-		dateStr = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, "<=") {
-		operator = "$lte"
-		dateStr = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, ">") {
-		operator = "$gt"
-		dateStr = valueStr[1:]
-	} else if strings.HasPrefix(valueStr, "<") {
-		operator = "$lt"
-		dateStr = valueStr[1:]
-	} else {
-		return nil, errors.New("invalid date comparison operator")
-	}
-
-	dateStr = strings.TrimSpace(dateStr)
-	date, err := p.parseDate(dateStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return bson.M{operator: date}, nil
-}
-
 // parseDate parses a date string in various formats
 func (p *Parser) parseDate(dateStr string) (time.Time, error) {
 	if date, err := time.Parse(time.RFC3339, dateStr); err == nil {
@@ -842,20 +683,10 @@ func (p *Parser) parseDate(dateStr string) (time.Time, error) {
 	return time.Time{}, errors.New("unable to parse date: " + dateStr)
 }
 
-// parseNumberRange parses number range queries like [1 TO 10] or [1 TO *]
-func (p *Parser) parseNumberRange(valueStr string) (interface{}, error) {
-	rangeStr := strings.Trim(valueStr, "[]")
-	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
-	if len(parts) != 2 {
-		return nil, errors.New("invalid number range format: expected [start TO end]")
-	}
-
-	startStr := strings.TrimSpace(parts[0])
-	endStr := strings.TrimSpace(parts[1])
-
+// parseNumberRange parses number range queries
+func (p *Parser) parseNumberRange(startStr, endStr string) (interface{}, error) {
 	result := bson.M{}
 
-	// Handle start number (or wildcard)
 	if startStr == "*" {
 		if endStr == "*" {
 			return nil, errors.New("invalid number range: both start and end cannot be wildcards")
@@ -884,36 +715,6 @@ func (p *Parser) parseNumberRange(valueStr string) (interface{}, error) {
 	return result, nil
 }
 
-// parseNumberComparison parses number comparison queries like >5, <=10
-func (p *Parser) parseNumberComparison(valueStr string) (interface{}, error) {
-	var operator string
-	var numStr string
-
-	if strings.HasPrefix(valueStr, ">=") {
-		operator = "$gte"
-		numStr = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, "<=") {
-		operator = "$lte"
-		numStr = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, ">") {
-		operator = "$gt"
-		numStr = valueStr[1:]
-	} else if strings.HasPrefix(valueStr, "<") {
-		operator = "$lt"
-		numStr = valueStr[1:]
-	} else {
-		return nil, errors.New("invalid number comparison operator")
-	}
-
-	numStr = strings.TrimSpace(numStr)
-	num, err := strconv.ParseFloat(numStr, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid number: %v", err)
-	}
-
-	return bson.M{operator: num}, nil
-}
-
 // validateFieldQuery validates that a field query doesn't contain standalone text terms when text search is disabled
 func (p *Parser) validateFieldQuery(query string) error {
 	trimmed := strings.TrimSpace(query)
@@ -921,10 +722,7 @@ func (p *Parser) validateFieldQuery(query string) error {
 		return nil
 	}
 
-	// Simple validation: if the query doesn't contain colons and doesn't look like operators/parentheses,
-	// it's likely a standalone text term which should be rejected when text search is disabled
 	if !strings.Contains(trimmed, ":") {
-		// Check if it's just logical operators and parentheses
 		words := strings.Fields(trimmed)
 		for _, word := range words {
 			if word != "AND" && word != "OR" && word != "NOT" && word != "(" && word != ")" {
