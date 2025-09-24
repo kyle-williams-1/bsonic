@@ -504,6 +504,11 @@ func TestDateQueries(t *testing.T) {
 			query:    "created_at:<=2023-02-01",
 			expected: 3, // Charlie (2022-08-30), Bob (2022-11-10), John (2023-01-15)
 		},
+		{
+			name:     "exact date match with parentheses",
+			query:    "(created_at:[2023-01-15 TO 2023-01-16]) AND active:true",
+			expected: 1, // John Doe (created 2023-01-15T10:30:00Z)
+		},
 	}
 
 	for _, tt := range tests {
