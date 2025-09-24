@@ -1725,3 +1725,231 @@ func TestNOTInParentheses(t *testing.T) {
 		})
 	}
 }
+
+// TestAdditionalEdgeCases tests additional edge cases through public API
+func TestAdditionalEdgeCases(t *testing.T) {
+	parser := bsonic.New()
+
+	tests := []struct {
+		name        string
+		query       string
+		expectError bool
+		expected    bson.M
+	}{
+		{
+			name:        "empty query",
+			query:       "",
+			expectError: false,
+			expected:    bson.M{},
+		},
+		{
+			name:        "whitespace only",
+			query:       "   ",
+			expectError: false,
+			expected:    bson.M{},
+		},
+		{
+			name:        "invalid date range both wildcards",
+			query:       "created_at:[* TO *]",
+			expectError: false, // This parses as literal string
+			expected:    bson.M{"created_at": "[* TO *]"},
+		},
+		{
+			name:        "invalid number range both wildcards",
+			query:       "age:[* TO *]",
+			expectError: false, // This parses as literal string
+			expected:    bson.M{"age": "[* TO *]"},
+		},
+		{
+			name:        "invalid date range with bad dates",
+			query:       "created_at:[invalid TO 2023-12-31]",
+			expectError: false, // This parses as literal string
+			expected:    bson.M{"created_at": "[invalid TO 2023-12-31]"},
+		},
+		{
+			name:        "invalid number range with bad numbers",
+			query:       "age:[not-a-number TO 100]",
+			expectError: false, // This parses as literal string
+			expected:    bson.M{"age": "[not-a-number TO 100]"},
+		},
+		{
+			name:        "valid date range with wildcard start",
+			query:       "created_at:[* TO 2023-12-31]",
+			expectError: false,
+			expected:    bson.M{"created_at": bson.M{"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)}},
+		},
+		{
+			name:        "valid date range with wildcard end",
+			query:       "created_at:[2023-01-01 TO *]",
+			expectError: false,
+			expected:    bson.M{"created_at": bson.M{"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+		},
+		{
+			name:        "valid number range with wildcard start",
+			query:       "age:[* TO 65]",
+			expectError: false,
+			expected:    bson.M{"age": bson.M{"$lte": 65.0}},
+		},
+		{
+			name:        "valid number range with wildcard end",
+			query:       "age:[18 TO *]",
+			expectError: false,
+			expected:    bson.M{"age": bson.M{"$gte": 18.0}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if test.expectError {
+				if err == nil {
+					t.Fatalf("Expected error for query: %s", test.query)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
+				}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
+				}
+			}
+		})
+	}
+}
+
+// TestTextSearchEdgeCases tests text search edge cases through public API
+func TestTextSearchEdgeCases(t *testing.T) {
+	parser := bsonic.NewWithTextSearch()
+
+	tests := []struct {
+		name        string
+		query       string
+		expectError bool
+		expected    bson.M
+	}{
+		{
+			name:        "empty text search",
+			query:       "",
+			expectError: false,
+			expected:    bson.M{},
+		},
+		{
+			name:        "whitespace text search",
+			query:       "   ",
+			expectError: false,
+			expected:    bson.M{},
+		},
+		{
+			name:        "simple text search",
+			query:       "search terms",
+			expectError: false,
+			expected:    bson.M{"$text": bson.M{"$search": "search terms"}},
+		},
+		{
+			name:        "mixed query with text and field",
+			query:       "search name:john",
+			expectError: false,
+			expected:    bson.M{"$and": []bson.M{{"name": "john"}, {"$text": bson.M{"$search": "search"}}}},
+		},
+		{
+			name:        "mixed query with text and multiple fields",
+			query:       "search name:john AND age:25",
+			expectError: false,
+			expected:    bson.M{"$and": []bson.M{{"age": 25.0, "name": "john"}, {"$text": bson.M{"$search": "search"}}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if test.expectError {
+				if err == nil {
+					t.Fatalf("Expected error for query: %s", test.query)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
+				}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
+				}
+			}
+		})
+	}
+}
+
+// TestComplexQueryEdgeCases tests complex query edge cases
+func TestComplexQueryEdgeCases(t *testing.T) {
+	parser := bsonic.New()
+
+	tests := []struct {
+		name        string
+		query       string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "nested parentheses with complex logic",
+			query:       "((name:john OR name:jane) AND age:25) OR (status:active AND role:admin)",
+			expectError: false,
+			description: "complex nested parentheses",
+		},
+		{
+			name:        "multiple NOT operations",
+			query:       "NOT name:john AND NOT age:25",
+			expectError: false,
+			description: "multiple NOT operations",
+		},
+		{
+			name:        "NOT with parentheses",
+			query:       "NOT (name:john OR age:25)",
+			expectError: false,
+			description: "NOT with grouped OR",
+		},
+		{
+			name:        "complex wildcard patterns",
+			query:       "name:jo*n AND email:*@example.com",
+			expectError: false,
+			description: "complex wildcard patterns",
+		},
+		{
+			name:        "mixed date and number ranges",
+			query:       "created_at:[2023-01-01 TO 2023-12-31] AND age:[18 TO 65]",
+			expectError: false,
+			description: "mixed date and number ranges",
+		},
+		{
+			name:        "complex comparison operators",
+			query:       "score:>85 AND rating:>=4.5 AND price:<100",
+			expectError: false,
+			description: "complex comparison operators",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := parser.Parse(test.query)
+			if test.expectError {
+				if err == nil {
+					t.Fatalf("Expected error for query: %s", test.query)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
+				}
+				if result == nil {
+					t.Fatalf("Expected non-nil result for query: %s", test.query)
+				}
+				// Just verify it parses without error and produces some BSON
+				if len(result) == 0 && test.query != "" {
+					t.Fatalf("Expected non-empty result for query: %s", test.query)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to create string pointers
+func stringPtr(s string) *string {
+	return &s
+}
