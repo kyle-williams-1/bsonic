@@ -1,4 +1,9 @@
 linters-settings:
   govet:
+    # disable specific govet checks
     disable:
       - structtag
+
+linters:
+  enable:
+    - govet
