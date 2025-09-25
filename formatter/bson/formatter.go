@@ -41,31 +41,75 @@ func (f *Formatter) Format(ast interface{}) (bson.M, error) {
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
 func (f *Formatter) parseValue(valueStr string) (interface{}, error) {
-	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
-		return f.parseRange(valueStr)
+	// Create a chain of value parsers
+	parsers := []func(string) (interface{}, error, bool){
+		f.tryParseRange,
+		f.tryParseComparison,
+		f.tryParseWildcard,
+		f.tryParseDate,
+		f.tryParseNumber,
+		f.tryParseBoolean,
 	}
 
-	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
-		return f.parseComparison(valueStr)
+	for _, parser := range parsers {
+		if result, err, handled := parser(valueStr); handled {
+			return result, err
+		}
 	}
 
-	if strings.Contains(valueStr, "*") {
-		return f.parseWildcard(valueStr)
-	}
-
-	if date, err := f.parseDate(valueStr); err == nil {
-		return date, nil
-	}
-
-	if num, err := strconv.ParseFloat(valueStr, 64); err == nil {
-		return num, nil
-	}
-
-	if valueStr == "true" || valueStr == "false" {
-		return valueStr == "true", nil
-	}
-
+	// Default: return as string
 	return valueStr, nil
+}
+
+// tryParseRange attempts to parse a range value
+func (f *Formatter) tryParseRange(valueStr string) (interface{}, error, bool) {
+	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
+		result, err := f.parseRange(valueStr)
+		return result, err, true
+	}
+	return nil, nil, false
+}
+
+// tryParseComparison attempts to parse a comparison value
+func (f *Formatter) tryParseComparison(valueStr string) (interface{}, error, bool) {
+	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
+		result, err := f.parseComparison(valueStr)
+		return result, err, true
+	}
+	return nil, nil, false
+}
+
+// tryParseWildcard attempts to parse a wildcard value
+func (f *Formatter) tryParseWildcard(valueStr string) (interface{}, error, bool) {
+	if strings.Contains(valueStr, "*") {
+		result, err := f.parseWildcard(valueStr)
+		return result, err, true
+	}
+	return nil, nil, false
+}
+
+// tryParseDate attempts to parse a date value
+func (f *Formatter) tryParseDate(valueStr string) (interface{}, error, bool) {
+	if date, err := f.parseDate(valueStr); err == nil {
+		return date, nil, true
+	}
+	return nil, nil, false
+}
+
+// tryParseNumber attempts to parse a number value
+func (f *Formatter) tryParseNumber(valueStr string) (interface{}, error, bool) {
+	if num, err := strconv.ParseFloat(valueStr, 64); err == nil {
+		return num, nil, true
+	}
+	return nil, nil, false
+}
+
+// tryParseBoolean attempts to parse a boolean value
+func (f *Formatter) tryParseBoolean(valueStr string) (interface{}, error, bool) {
+	if valueStr == "true" || valueStr == "false" {
+		return valueStr == "true", nil, true
+	}
+	return nil, nil, false
 }
 
 // parseRange parses range queries like [start TO end] for both dates and numbers
@@ -285,28 +329,22 @@ func (f *Formatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression)
 		return f.notExpressionToBSON(andExpr.And[0])
 	}
 
+	directFields, conditions := f.processAndExpressions(andExpr.And)
+	return f.buildAndResult(directFields, conditions)
+}
+
+// processAndExpressions processes all AND expressions and separates simple fields from complex conditions
+func (f *Formatter) processAndExpressions(expressions []*lucene.ParticipleNotExpression) (bson.M, []bson.M) {
 	var conditions []bson.M
 	directFields := bson.M{}
 	hasComplexExpressions := false
 
-	for _, notExpr := range andExpr.And {
+	for _, notExpr := range expressions {
 		childBSON := f.notExpressionToBSON(notExpr)
 
 		if f.isSimpleFieldValue(childBSON) {
-			// Check for field conflicts
-			hasConflict := false
-			for k := range childBSON {
-				if _, exists := directFields[k]; exists {
-					hasConflict = true
-					break
-				}
-			}
-
-			if !hasConflict && !hasComplexExpressions {
-				// Merge simple field:value pairs directly only if no complex expressions
-				for k, v := range childBSON {
-					directFields[k] = v
-				}
+			if f.canMergeField(directFields, childBSON, hasComplexExpressions) {
+				f.mergeField(directFields, childBSON)
 			} else {
 				conditions = append(conditions, childBSON)
 			}
@@ -316,14 +354,40 @@ func (f *Formatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression)
 		}
 	}
 
+	return directFields, conditions
+}
+
+// canMergeField checks if a field can be merged into directFields
+func (f *Formatter) canMergeField(directFields bson.M, childBSON bson.M, hasComplexExpressions bool) bool {
+	if hasComplexExpressions {
+		return false
+	}
+
+	// Check for field conflicts
+	for k := range childBSON {
+		if _, exists := directFields[k]; exists {
+			return false
+		}
+	}
+	return true
+}
+
+// mergeField merges a simple field into directFields
+func (f *Formatter) mergeField(directFields bson.M, childBSON bson.M) {
+	for k, v := range childBSON {
+		directFields[k] = v
+	}
+}
+
+// buildAndResult builds the final result from directFields and conditions
+func (f *Formatter) buildAndResult(directFields bson.M, conditions []bson.M) bson.M {
 	if len(directFields) > 0 && len(conditions) > 0 {
 		conditions = append(conditions, directFields)
 		return bson.M{"$and": conditions}
 	} else if len(conditions) > 0 {
 		return bson.M{"$and": conditions}
-	} else {
-		return directFields
 	}
+	return directFields
 }
 
 // notExpressionToBSON converts a ParticipleNotExpression to BSON

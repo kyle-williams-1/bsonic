@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/kyle-williams-1/bsonic"
+	"github.com/kyle-williams-1/bsonic/config"
+	"github.com/kyle-williams-1/bsonic/factory"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -1473,48 +1475,68 @@ func TestParseNotWithOrExpressions(t *testing.T) {
 }
 
 func compareBSONValues(actual, expected interface{}) bool {
+	// Handle time.Time comparison
 	if actualTime, ok := actual.(time.Time); ok {
-		if expectedTime, ok := expected.(time.Time); ok {
-			return actualTime.Equal(expectedTime)
-		}
-		return false
+		return compareTimeValues(actualTime, expected)
 	}
 
+	// Handle bson.M comparison
 	if actualMap, ok := actual.(bson.M); ok {
-		if expectedMap, ok := expected.(bson.M); ok {
-			if len(actualMap) != len(expectedMap) {
-				return false
-			}
-			for key, expectedValue := range expectedMap {
-				actualValue, exists := actualMap[key]
-				if !exists {
-					return false
-				}
-				if !compareBSONValues(actualValue, expectedValue) {
-					return false
-				}
-			}
-			return true
-		}
-		return false
+		return compareBSONMaps(actualMap, expected)
 	}
 
+	// Handle []bson.M comparison
 	if actualArray, ok := actual.([]bson.M); ok {
-		if expectedArray, ok := expected.([]bson.M); ok {
-			if len(actualArray) != len(expectedArray) {
-				return false
-			}
-			for i, expectedValue := range expectedArray {
-				if !compareBSONValues(actualArray[i], expectedValue) {
-					return false
-				}
-			}
-			return true
-		}
+		return compareBSONArrays(actualArray, expected)
+	}
+
+	// Default comparison
+	return actual == expected
+}
+
+// compareTimeValues compares time.Time values
+func compareTimeValues(actualTime time.Time, expected interface{}) bool {
+	expectedTime, ok := expected.(time.Time)
+	return ok && actualTime.Equal(expectedTime)
+}
+
+// compareBSONMaps compares bson.M values
+func compareBSONMaps(actualMap bson.M, expected interface{}) bool {
+	expectedMap, ok := expected.(bson.M)
+	if !ok {
 		return false
 	}
 
-	return actual == expected
+	if len(actualMap) != len(expectedMap) {
+		return false
+	}
+
+	for key, expectedValue := range expectedMap {
+		actualValue, exists := actualMap[key]
+		if !exists || !compareBSONValues(actualValue, expectedValue) {
+			return false
+		}
+	}
+	return true
+}
+
+// compareBSONArrays compares []bson.M values
+func compareBSONArrays(actualArray []bson.M, expected interface{}) bool {
+	expectedArray, ok := expected.([]bson.M)
+	if !ok {
+		return false
+	}
+
+	if len(actualArray) != len(expectedArray) {
+		return false
+	}
+
+	for i, expectedValue := range expectedArray {
+		if !compareBSONValues(actualArray[i], expectedValue) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestShouldUseTextSearchEdgeCases(t *testing.T) {
@@ -1946,5 +1968,113 @@ func TestComplexQueryEdgeCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewWithConfig tests the NewWithConfig function
+func TestNewWithConfig(t *testing.T) {
+	// Test with valid config
+	cfg := &config.Config{
+		Language:  config.LanguageLucene,
+		Formatter: config.FormatterBSON,
+	}
+
+	parser, err := bsonic.NewWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig should not return error, got: %v", err)
+	}
+	if parser == nil {
+		t.Fatal("NewWithConfig should return a non-nil parser")
+	}
+
+	// Test with invalid language
+	invalidCfg := &config.Config{
+		Language:  "invalid",
+		Formatter: config.FormatterBSON,
+	}
+
+	_, err = bsonic.NewWithConfig(invalidCfg)
+	if err == nil {
+		t.Fatal("NewWithConfig should return error for invalid language")
+	}
+
+	// Test with invalid formatter
+	invalidCfg2 := &config.Config{
+		Language:  config.LanguageLucene,
+		Formatter: "invalid",
+	}
+
+	_, err = bsonic.NewWithConfig(invalidCfg2)
+	if err == nil {
+		t.Fatal("NewWithConfig should return error for invalid formatter")
+	}
+}
+
+// TestConfigFunctions tests config package functions
+func TestConfigFunctions(t *testing.T) {
+	// Test Default config
+	cfg := config.Default()
+	if cfg == nil {
+		t.Fatal("Default() should return a non-nil config")
+	}
+
+	// Test WithLanguage
+	cfgWithLang := cfg.WithLanguage(config.LanguageLucene)
+	if cfgWithLang.Language != config.LanguageLucene {
+		t.Error("WithLanguage should set the language")
+	}
+
+	// Test WithFormatter
+	cfgWithFmt := cfg.WithFormatter(config.FormatterBSON)
+	if cfgWithFmt.Formatter != config.FormatterBSON {
+		t.Error("WithFormatter should set the formatter")
+	}
+}
+
+// TestFactoryFunctions tests factory package functions
+func TestFactoryFunctions(t *testing.T) {
+	// Test CreateParser
+	parser, err := factory.CreateParser(config.LanguageLucene)
+	if err != nil {
+		t.Fatalf("CreateParser should not return error, got: %v", err)
+	}
+	if parser == nil {
+		t.Fatal("CreateParser should return a non-nil parser")
+	}
+
+	// Test CreateParser with invalid language
+	_, err = factory.CreateParser("invalid")
+	if err == nil {
+		t.Fatal("CreateParser should return error for invalid language")
+	}
+
+	// Test CreateTextSearchParser
+	textParser, err := factory.CreateTextSearchParser(config.LanguageLucene)
+	if err != nil {
+		t.Fatalf("CreateTextSearchParser should not return error, got: %v", err)
+	}
+	if textParser == nil {
+		t.Fatal("CreateTextSearchParser should return a non-nil parser")
+	}
+
+	// Test CreateFormatter
+	formatter, err := factory.CreateFormatter(config.FormatterBSON)
+	if err != nil {
+		t.Fatalf("CreateFormatter should not return error, got: %v", err)
+	}
+	if formatter == nil {
+		t.Fatal("CreateFormatter should return a non-nil formatter")
+	}
+
+	// Test CreateFormatter with invalid formatter
+	_, err = factory.CreateFormatter("invalid")
+	if err == nil {
+		t.Fatal("CreateFormatter should return error for invalid formatter")
+	}
+
+	// Test CreateBSONFormatter
+	bsonFormatter := factory.CreateBSONFormatter()
+	if bsonFormatter == nil {
+		t.Fatal("CreateBSONFormatter should return a non-nil formatter")
 	}
 }

@@ -100,52 +100,59 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 		return bson.M{}, nil
 	}
 
-	// If text search is enabled, handle all query types appropriately
 	if p.SearchMode == SearchModeText {
-		// Check if the language parser supports text search
-		if textSearchParser, ok := p.languageParser.(language.TextSearchParser); ok {
-			// Check if this is a mixed query (field searches + text search) first
-			if textSearchParser.IsMixedQuery(query) {
-				fieldAST, textTerms, err := textSearchParser.ParseMixedQuery(query)
-				if err != nil {
-					return nil, err
-				}
+		return p.parseWithTextSearch(query)
+	}
 
-				// Use the formatter's mixed query handling
-				var fieldBSON bson.M
-				if fieldAST != nil {
-					fieldBSON, err = p.formatter.Format(fieldAST)
-					if err != nil {
-						return nil, err
-					}
-				}
-				// Use the formatter's FormatMixedQuery method
-				return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatMixedQuery(fieldBSON, textTerms)
-			}
+	return p.parseFieldQuery(query)
+}
 
-			// Check if this should be a text search query (no field:value pairs)
-			if textSearchParser.ShouldUseTextSearch(query) {
-				textTerms, err := textSearchParser.ParseTextSearch(query)
-				if err != nil {
-					return nil, err
-				}
+// parseWithTextSearch handles parsing when text search is enabled
+func (p *Parser) parseWithTextSearch(query string) (bson.M, error) {
+	textSearchParser, ok := p.languageParser.(language.TextSearchParser)
+	if !ok {
+		// Fallback for parsers that don't support text search
+		return p.parseFieldQuery(query)
+	}
 
-				// Use the formatter's text search handling
-				return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatTextSearch(textTerms)
-			}
+	if textSearchParser.IsMixedQuery(query) {
+		return p.parseMixedQuery(query, textSearchParser)
+	}
 
-			// If we get here, it's a pure field search with text search enabled
-			// Parse it as a regular field query
-			return p.parseFieldQuery(query)
-		} else {
-			// Fallback for parsers that don't support text search
-			// This shouldn't happen in practice, but handle gracefully
-			return p.parseFieldQuery(query)
+	if textSearchParser.ShouldUseTextSearch(query) {
+		return p.parseTextOnlyQuery(query, textSearchParser)
+	}
+
+	// Pure field search with text search enabled
+	return p.parseFieldQuery(query)
+}
+
+// parseMixedQuery handles mixed queries with both field and text search
+func (p *Parser) parseMixedQuery(query string, textSearchParser language.TextSearchParser) (bson.M, error) {
+	fieldAST, textTerms, err := textSearchParser.ParseMixedQuery(query)
+	if err != nil {
+		return nil, err
+	}
+
+	var fieldBSON bson.M
+	if fieldAST != nil {
+		fieldBSON, err = p.formatter.Format(fieldAST)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	// Text search is disabled, parse as regular field query
-	return p.parseFieldQuery(query)
+	return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatMixedQuery(fieldBSON, textTerms)
+}
+
+// parseTextOnlyQuery handles text-only queries
+func (p *Parser) parseTextOnlyQuery(query string, textSearchParser language.TextSearchParser) (bson.M, error) {
+	textTerms, err := textSearchParser.ParseTextSearch(query)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatTextSearch(textTerms)
 }
 
 // parseFieldQuery parses a field-only query (without text search terms).

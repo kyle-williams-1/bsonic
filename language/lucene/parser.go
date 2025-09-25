@@ -123,25 +123,28 @@ func (p *Parser) IsMixedQuery(query string) bool {
 		return false
 	}
 
-	// Parse the query to get a more accurate detection
-	ast, err := p.Parse(query)
-	if err != nil {
-		// If parsing fails, fall back to simple string checking
-		parts := strings.Fields(trimmed)
-		hasTextTerms := false
-
-		for _, part := range parts {
-			if !strings.Contains(part, ":") && part != "AND" && part != "OR" && part != "NOT" && part != "(" && part != ")" {
-				hasTextTerms = true
-				break
-			}
-		}
-
-		return hasFieldPairs && hasTextTerms
+	// Try to parse and analyze AST first
+	if ast, err := p.Parse(query); err == nil {
+		return p.hasMixedContent(ast)
 	}
 
-	// Walk the AST to check for mixed content
-	return p.hasMixedContent(ast)
+	// Fallback to simple string analysis
+	return p.hasMixedContentByString(trimmed)
+}
+
+// hasMixedContentByString analyzes query string for mixed content without parsing
+func (p *Parser) hasMixedContentByString(query string) bool {
+	parts := strings.Fields(query)
+	hasTextTerms := false
+
+	for _, part := range parts {
+		if !p.isFieldPart(part) {
+			hasTextTerms = true
+			break
+		}
+	}
+
+	return hasTextTerms
 }
 
 // hasMixedContent walks the AST to determine if it contains both field values and text search terms
@@ -221,35 +224,60 @@ func (p *Parser) ParseMixedQuery(query string) (interface{}, string, error) {
 		return nil, "", nil
 	}
 
-	parts := strings.Fields(trimmed)
+	fieldParts, textParts := p.separateQueryParts(trimmed)
+
+	fieldAST, err := p.parseFieldParts(fieldParts)
+	if err != nil {
+		return nil, "", err
+	}
+
+	textTerms := p.joinTextParts(textParts)
+	return fieldAST, textTerms, nil
+}
+
+// separateQueryParts separates field parts from text parts
+func (p *Parser) separateQueryParts(query string) ([]string, []string) {
+	parts := strings.Fields(query)
 	var fieldParts []string
 	var textParts []string
 
 	for _, part := range parts {
-		if strings.Contains(part, ":") || part == "AND" || part == "OR" || part == "NOT" || part == "(" || part == ")" {
+		if p.isFieldPart(part) {
 			fieldParts = append(fieldParts, part)
 		} else {
 			textParts = append(textParts, part)
 		}
 	}
 
-	var fieldAST interface{}
-	var textTerms string
+	return fieldParts, textParts
+}
 
-	if len(fieldParts) > 0 {
-		fieldQuery := strings.Join(fieldParts, " ")
-		ast, err := p.ParseFieldQuery(fieldQuery)
-		if err != nil {
-			return nil, "", err
-		}
-		fieldAST = ast
+// isFieldPart checks if a part belongs to field query
+func (p *Parser) isFieldPart(part string) bool {
+	return strings.Contains(part, ":") ||
+		part == "AND" ||
+		part == "OR" ||
+		part == "NOT" ||
+		part == "(" ||
+		part == ")"
+}
+
+// parseFieldParts parses field parts into AST
+func (p *Parser) parseFieldParts(fieldParts []string) (interface{}, error) {
+	if len(fieldParts) == 0 {
+		return nil, nil
 	}
 
-	if len(textParts) > 0 {
-		textTerms = strings.Join(textParts, " ")
-	}
+	fieldQuery := strings.Join(fieldParts, " ")
+	return p.ParseFieldQuery(fieldQuery)
+}
 
-	return fieldAST, textTerms, nil
+// joinTextParts joins text parts into a single string
+func (p *Parser) joinTextParts(textParts []string) string {
+	if len(textParts) == 0 {
+		return ""
+	}
+	return strings.Join(textParts, " ")
 }
 
 // ValidateFieldQuery validates that a field query doesn't contain standalone text terms when text search is disabled.
