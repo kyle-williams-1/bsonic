@@ -28,7 +28,6 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Date queries**: Full support for date range and comparison queries
 - **Number ranges**: Support for numeric range queries and comparisons
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
-- **Full-text search**: Support for MongoDB text search with configurable search modes
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
 - **Extensible architecture**: Easy to add new query languages and output formatters
 - **Configurable**: Flexible configuration system for language and formatter selection
@@ -107,17 +106,6 @@ if err != nil {
 ### Available Formatters
 
 - **BSON** (`config.FormatterBSON`): MongoDB BSON output format (default)
-
-### Text Search Configuration
-
-```go
-// Parser with text search enabled
-parser := bsonic.NewWithTextSearch()
-
-// Or enable text search on existing parser
-parser := bsonic.New()
-parser.SetSearchMode(bsonic.SearchModeText)
-```
 
 ### Adding New Languages
 
@@ -359,107 +347,6 @@ query, _ := parser.Parse("name:john")
 // BSON: {"name": "john"}
 ```
 
-### Full-Text Search
-
-Bsonic supports MongoDB's full-text search functionality, allowing you to search across multiple fields simultaneously.
-
-#### Enabling Text Search
-
-```go
-// Create a parser with text search enabled
-parser := bsonic.NewWithTextSearch()
-
-// Or enable text search on an existing parser
-parser := bsonic.New()
-parser.SetSearchMode(bsonic.SearchModeText)
-
-// Text search with custom configuration
-cfg := config.Default().WithLanguage(config.LanguageLucene).WithFormatter(config.FormatterBSON)
-parser, err := bsonic.NewWithConfig(cfg)
-if err != nil {
-    log.Fatal(err)
-}
-parser.SetSearchMode(bsonic.SearchModeText)
-```
-
-#### Basic Text Search
-
-```go
-// Simple text search
-query, _ := parser.Parse("search terms")
-// BSON: {"$text": {"$search": "search terms"}}
-
-// Multiple words
-query, _ := parser.Parse("multiple words search")
-// BSON: {"$text": {"$search": "multiple words search"}}
-```
-
-#### Text Search vs Field Search
-
-When text search is enabled, bsonic automatically determines whether to use text search or field search:
-
-- **Text search**: Used when the query contains no field:value pairs (no colons)
-- **Field search**: Used when the query contains field:value pairs
-
-```go
-// This will use text search
-query, _ := parser.Parse("engineer software")
-// BSON: {"$text": {"$search": "engineer software"}}
-
-// This will use field search
-query, _ := parser.Parse("name:john")
-// BSON: {"name": "john"}}
-```
-
-#### MongoDB Text Index Requirements
-
-**Important**: To use text search, you must create text indexes on your MongoDB collections. Text indexes must be created on all fields you want to be searchable.
-
-```javascript
-// Example: Create a text index on multiple fields
-db.users.createIndex({ 
-  "name": "text", 
-  "email": "text", 
-  "profile.bio": "text",
-  "tags": "text"
-});
-
-// Example: Create a text index on product fields
-db.products.createIndex({ 
-  "name": "text", 
-  "category": "text",
-  "tags": "text",
-  "description": "text"
-});
-```
-
-#### Mixed Queries
-
-Mixed queries combine text search with field searches, allowing you to search for text terms while filtering by specific field values:
-
-```go
-// Text search combined with field search
-query, _ := parser.Parse("engineer active:true")
-// BSON: {"$and": [{"$text": {"$search": "engineer"}}, {"active": true}]}
-
-// Multiple text terms with field search
-query, _ := parser.Parse("software engineer role:admin")
-// BSON: {"$and": [{"$text": {"$search": "software engineer"}}, {"role": "admin"}]}
-
-// Text search with complex field queries
-query, _ := parser.Parse("designer role:user AND active:true")
-// BSON: {"$and": [{"$text": {"$search": "designer"}}, {"role": "user", "active": true}]}
-
-// Text search with OR field queries
-query, _ := parser.Parse("devops role:admin OR name:charlie")
-// BSON: {"$and": [{"$text": {"$search": "devops"}}, {"$or": [{"role": "admin"}, {"name": "charlie"}]}]}
-```
-
-**How it works:**
-- Text terms (without colons) are combined into a single `$text` search
-- Field:value pairs are parsed as regular field searches
-- Both are combined with `$and` operator for precise filtering
-
 ## Migration Guide
 
 ### From Previous Versions
@@ -474,9 +361,6 @@ query, err := bsonic.Parse("name:john AND age:25")
 parser := bsonic.New()
 query, err := parser.Parse("name:john AND age:25")
 
-// Text search still works the same way
-parser := bsonic.NewWithTextSearch()
-query, err := parser.Parse("search terms")
 ```
 
 ### New Capabilities
@@ -517,15 +401,10 @@ func createCustomParser() (*bsonic.Parser, error) {
     return bsonic.NewWithConfig(cfg)
 }
 
-// Example 2: Reusable parser with text search
-func createTextSearchParser() *bsonic.Parser {
-    parser := bsonic.NewWithTextSearch()
-    return parser
-}
 
-// Example 3: Parser for different use cases
+// Example 2: Parser for different use cases
 func createFieldOnlyParser() *bsonic.Parser {
-    parser := bsonic.New() // Text search disabled by default
+    parser := bsonic.New()
     return parser
 }
 ```

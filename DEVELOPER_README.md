@@ -81,14 +81,7 @@ type Parser interface {
 
 **Text Search Parser Interface:**
 ```go
-type TextSearchParser interface {
-    Parser
-    // Query type detection
-    IsMixedQuery(query string) bool
-    ShouldUseTextSearch(query string) bool
-    // Query parsing
-    ParseMixedQuery(query string) (fieldAST interface{}, textTerms string, err error)
-    ParseTextSearch(query string) (string, error)
+, textTerms string, err error)
     ParseFieldQuery(query string) (interface{}, error)
     // Validation
     ValidateFieldQuery(query string) error
@@ -104,13 +97,7 @@ type Formatter[T any] interface {
 
 **Text Search Formatter Interface:**
 ```go
-type TextSearchFormatter[T any] interface {
-    Formatter[T]
-    // Text search formatting
-    FormatTextSearch(textTerms string) (T, error)
-    // Mixed query formatting
-    FormatMixedQuery(fieldResult T, textTerms string) (T, error)
-}
+
 ```
 
 ### Configuration System
@@ -133,7 +120,6 @@ cfg := config.Default().
 - **Generic Orchestration**: Pure coordination between language parsers and formatters
 - **No Language-Specific Logic**: All parsing logic delegated to language parsers
 - **No Output-Specific Logic**: All formatting logic delegated to formatters
-- **Query Type Detection**: Delegated to language parser's `IsMixedQuery()` and `ShouldUseTextSearch()`
 
 ### Language System (`language/`)
 - **Base Parser Interface**: Defines contract for basic query language parsers
@@ -225,21 +211,9 @@ formatter, err := factory.CreateFormatter(cfg.Formatter)
 
 The language parser determines query type based on search mode and content:
 
-- **Field Query**: `name:john AND age:25` (detected by `ShouldUseTextSearch()` returning false)
-- **Text Search**: `software engineer` (detected by `ShouldUseTextSearch()` returning true)
 - **Mixed Query**: `engineer role:admin AND active:true` (detected by `IsMixedQuery()` returning true)
 
 ### Processing Flow
-
-1. **Query Type Detection**: Language parser determines query type using `IsMixedQuery()` and `ShouldUseTextSearch()`
-2. **Query Parsing**: Language parser parses the query using appropriate method:
-   - `ParseFieldQuery()` for field queries
-   - `ParseTextSearch()` for text search queries  
-   - `ParseMixedQuery()` for mixed queries
-3. **Output Formatting**: Formatter converts parsed data to output format:
-   - `Format()` for field queries
-   - `FormatTextSearch()` for text search queries
-   - `FormatMixedQuery()` for mixed queries
 
 ### Processing Examples
 
@@ -258,7 +232,6 @@ Input: "name:jo* AND age:[18 TO 65] OR status:active"
 
 **Text Search:**
 ```
-Input: "software engineer" (with SearchModeText)
 → Output: {"$text": {"$search": "software engineer"}}
 ```
 
@@ -267,71 +240,7 @@ Input: "software engineer" (with SearchModeText)
 ### Search Modes
 
 ```go
-type SearchMode int
 
-const (
-    SearchModeDisabled SearchMode = iota  // Default: field queries only
-    SearchModeText                        // Enables text search + field queries
-)
-```
-
-### Query Type Detection Logic
-
-The parser uses `shouldUseTextSearch()` to determine if a query should use text search:
-- Must have text search enabled
-- Must not contain field:value pairs (`:`)
-- Must not contain logical operators without field pairs
-
-### Mixed Query Handling
-
-Mixed queries combine text search with field searches using `parseMixedQuery()`:
-- Splits query into field parts and text parts
-- Parses field query normally
-- Generates text search BSON
-- Combines with `$and` operator
-
-## Value Parsing
-
-### Type Detection Pipeline
-
-The `parseValue()` function handles different value types in order:
-
-1. **Range queries**: `[start TO end]` → `{"$gte": start, "$lte": end}`
-2. **Comparison operators**: `>value`, `<value`, `>=value`, `<=value`
-3. **Wildcard patterns**: `*pattern*`, `pattern*`, `*pattern` → regex
-4. **Date parsing**: ISO dates and time strings
-5. **Number parsing**: integers and floats
-6. **Boolean parsing**: `true`/`false`
-7. **Default**: string values
-
-### Wildcard Pattern Processing
-
-`parseWildcard()` converts wildcards to MongoDB regex:
-- `*J*` → contains pattern (no anchoring)
-- `*J` → ends with pattern (`$`)
-- `J*` → starts with pattern (`^`)
-- `J*K` → starts and ends with patterns (`^` and `$`)
-
-## Error Handling
-
-### Validation Errors
-
-`validateFieldQuery()` ensures field queries don't contain standalone text terms when text search is disabled.
-
-### Parsing Errors
-
-Participle provides detailed syntax error messages for malformed queries.
-
-## Performance
-
-### Parser Reuse
-
-```go
-// Good: Reuse parser instance
-parser := bsonic.New()
-for _, query := range queries {
-    result, _ := parser.Parse(query)
-}
 ```
 
 ### Optimizations
@@ -386,23 +295,6 @@ func (p *Parser) Parse(query string) (language.AST, error) {
     // Parse SQL query and return AST
 }
 
-// Implement TextSearchParser interface for text search support
-func (p *Parser) IsMixedQuery(query string) bool {
-    // SQL-specific mixed query detection
-}
-
-func (p *Parser) ShouldUseTextSearch(query string) bool {
-    // SQL-specific text search detection
-}
-
-func (p *Parser) ParseMixedQuery(query string) (interface{}, string, error) {
-    // Parse mixed SQL query, return field AST and text terms
-}
-
-func (p *Parser) ParseTextSearch(query string) (string, error) {
-    // Parse text-only SQL query
-}
-
 func (p *Parser) ParseFieldQuery(query string) (interface{}, error) {
     // Parse field-only SQL query
 }
@@ -452,12 +344,6 @@ type Formatter struct {
 // Implement base Formatter interface
 func (f *Formatter) Format(ast interface{}) (string, error) {
     // Convert AST to JSON string
-}
-
-// Implement TextSearchFormatter interface for text search support
-func (f *Formatter) FormatTextSearch(textTerms string) (string, error) {
-    // Convert text search terms to JSON format
-    // e.g., return `{"text_search": "software engineer"}`
 }
 
 func (f *Formatter) FormatMixedQuery(fieldResult string, textTerms string) (string, error) {
@@ -521,15 +407,9 @@ The new architecture achieves complete separation between language parsing and o
 
 ### Extensibility Without Modification
 
-- **Add New Languages**: Implement `TextSearchParser` interface, no changes to main parser
-- **Add New Output Formats**: Implement `TextSearchFormatter` interface, no changes to main parser
-- **Mix and Match**: Any language parser can work with any formatter
-- **Backward Compatibility**: Existing code continues to work unchanged
-
 ### Clean Interface Design
 
 - **Base Interfaces**: `Parser` and `Formatter` for basic functionality
-- **Extended Interfaces**: `TextSearchParser` and `TextSearchFormatter` for advanced features
 - **Optional Features**: Languages and formatters can opt into text search support
 - **Type Safety**: Compile-time validation of interface implementations
 
