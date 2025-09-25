@@ -1707,6 +1707,157 @@ func TestParseFreeTextSearch(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "Free text search with grouped OR condition",
+			query: `"John Doe" AND (active:true OR role:admin)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{"role": "admin"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with nested grouped logic",
+			query: `"John Doe" AND ((active:true OR role:admin) AND status:verified)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$and": []bson.M{
+							{
+								"$or": []bson.M{
+									{"active": true},
+									{"role": "admin"},
+								},
+							},
+							{"status": "verified"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with complex grouped OR logic",
+			query: `"John Doe" AND (active:true OR (role:admin AND department:IT))`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{
+								"role":       "admin",
+								"department": "IT",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with NOT grouped condition",
+			query: `"John Doe" AND NOT (active:false OR role:guest)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$and": []bson.M{
+							{"active": bson.M{"$ne": false}},
+							{"role": bson.M{"$ne": "guest"}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Multiple free text searches with grouped logic",
+			query: `("John Doe" OR "Jane Smith") AND (active:true OR role:admin)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John Doe Jane Smith",
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{"role": "admin"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with deeply nested grouped logic",
+			query: `"John Doe" AND ((active:true OR role:admin) AND (department:IT OR department:Engineering))`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$and": []bson.M{
+							{
+								"$or": []bson.M{
+									{"active": true},
+									{"role": "admin"},
+								},
+							},
+							{
+								"$or": []bson.M{
+									{"department": "IT"},
+									{"department": "Engineering"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with mixed single and double quotes in groups",
+			query: `("John Doe" OR 'Jane Smith') AND (active:true OR role:admin)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John Doe Jane Smith",
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{"role": "admin"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

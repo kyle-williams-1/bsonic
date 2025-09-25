@@ -45,7 +45,13 @@ type ParticipleFieldValue struct {
 
 // ParticipleFreeText represents free text search queries (quoted strings without field names)
 type ParticipleFreeText struct {
-	Value *ParticipleValue `@@`
+	Value *ParticipleQuotedValue `@@`
+}
+
+// ParticipleQuotedValue represents only quoted values for free text search
+type ParticipleQuotedValue struct {
+	String       *string `@String`
+	SingleString *string `| @SingleString`
 }
 
 // ParticipleValue represents a value that can be a text term or quoted string

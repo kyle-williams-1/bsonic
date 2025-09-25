@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kyle-williams-1/bsonic"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -799,10 +800,82 @@ func TestEmptyQuery(t *testing.T) {
 	}
 }
 
+// TestFreeTextSearch tests free text search functionality with quoted strings
+func TestFreeTextSearch(t *testing.T) {
+	testCases := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{
+			name:     "simple free text search",
+			query:    `"John Doe"`,
+			expected: 1, // Should match John Doe
+		},
+		{
+			name:     "free text search with single quotes",
+			query:    `'Jane Smith'`,
+			expected: 1, // Should match Jane Smith
+		},
+		{
+			name:     "free text search with field query",
+			query:    `"John Doe" AND active:true`,
+			expected: 1, // Should match John Doe who is active
+		},
+		{
+			name:     "free text search with OR condition",
+			query:    `"John Doe" AND (active:true OR role:admin)`,
+			expected: 1, // Should match John Doe who is active
+		},
+		{
+			name:     "multiple free text searches with OR",
+			query:    `("John Doe" OR "Jane Smith") AND active:true`,
+			expected: 2, // Should match both John Doe and Jane Smith who are active
+		},
+		{
+			name:     "free text search with NOT condition",
+			query:    `"John Doe" AND NOT role:guest`,
+			expected: 1, // Should match John Doe who is not a guest
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Parse the query
+			bsonQuery, err := parser.Parse(tc.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tc.query, err)
+			}
+
+			// Execute the query
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			cursor, err := testDB.Collection("users").Find(ctx, bsonQuery)
+			if err != nil {
+				t.Fatalf("Failed to execute query: %v", err)
+			}
+			defer cursor.Close(ctx)
+
+			var results []bson.M
+			if err = cursor.All(ctx, &results); err != nil {
+				t.Fatalf("Failed to decode results: %v", err)
+			}
+
+			count := len(results)
+			if count != tc.expected {
+				t.Errorf("Expected %d documents for query '%s', got %d", tc.expected, tc.query, count)
+				t.Logf("Query BSON: %+v", bsonQuery)
+				t.Logf("Results: %+v", results)
+			}
+		})
+	}
+}
+
 // TestQueryValidation tests that invalid queries are handled properly
 func TestQueryValidation(t *testing.T) {
 	invalidQueries := []string{
-		"invalid query format",
+		"invalid query format without quotes", // This should be invalid as it's not quoted
 		":value",
 		"field:",
 	}

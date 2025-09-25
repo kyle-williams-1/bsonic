@@ -311,6 +311,13 @@ func (f *Formatter) expressionToBSON(expr *lucene.ParticipleExpression) bson.M {
 		return f.andExpressionToBSON(expr.Or[0])
 	}
 
+	// Check if all OR conditions are text searches
+	textSearches := f.extractTextSearches(expr.Or)
+	if len(textSearches) > 0 && len(textSearches) == len(expr.Or) {
+		// All conditions are text searches, combine them into a single $text expression
+		return f.combineTextSearches(textSearches)
+	}
+
 	var conditions []bson.M
 	for _, andExpr := range expr.Or {
 		conditions = append(conditions, f.andExpressionToBSON(andExpr))
@@ -444,23 +451,67 @@ func (f *Formatter) fieldValueToBSON(fv *lucene.ParticipleFieldValue) bson.M {
 // freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
 func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
 	var valueStr string
-	if len(ft.Value.TextTerms) > 0 {
-		valueStr = strings.Join(ft.Value.TextTerms, " ")
-	} else if ft.Value.String != nil {
+	if ft.Value.String != nil {
 		valueStr = *ft.Value.String
 	} else if ft.Value.SingleString != nil {
 		valueStr = *ft.Value.SingleString
-	} else if ft.Value.Bracketed != nil {
-		valueStr = *ft.Value.Bracketed
-	} else if ft.Value.DateTime != nil {
-		valueStr = *ft.Value.DateTime
-	} else if ft.Value.TimeString != nil {
-		valueStr = *ft.Value.TimeString
 	}
 
 	// For free text search, we use MongoDB's $text operator
 	// The value should be quoted for exact phrase matching
 	return bson.M{"$text": bson.M{"$search": fmt.Sprintf("\"%s\"", valueStr)}}
+}
+
+// extractTextSearches extracts text search strings from OR conditions
+func (f *Formatter) extractTextSearches(andExpressions []*lucene.ParticipleAndExpression) []string {
+	var textSearches []string
+
+	for _, andExpr := range andExpressions {
+		if len(andExpr.And) == 1 {
+			// Check if this is a simple text search
+			bsonResult := f.notExpressionToBSON(andExpr.And[0])
+			if textSearch, isTextSearch := f.extractTextSearchString(bsonResult); isTextSearch {
+				textSearches = append(textSearches, textSearch)
+			}
+		}
+	}
+
+	return textSearches
+}
+
+// extractTextSearchString extracts the search string from a $text BSON expression
+func (f *Formatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
+	if textOp, hasText := bsonResult["$text"]; hasText {
+		if textMap, ok := textOp.(bson.M); ok {
+			if search, hasSearch := textMap["$search"]; hasSearch {
+				if searchStr, ok := search.(string); ok {
+					// Remove the quotes that were added in freeTextToBSON
+					if len(searchStr) >= 2 && searchStr[0] == '"' && searchStr[len(searchStr)-1] == '"' {
+						return searchStr[1 : len(searchStr)-1], true
+					}
+					return searchStr, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+// combineTextSearches combines multiple text search strings into a single $text expression
+func (f *Formatter) combineTextSearches(textSearches []string) bson.M {
+	// For MongoDB text search, multiple unquoted terms are OR'd by default
+	// We need to extract individual words from each phrase for OR behavior
+	var allTerms []string
+	for _, search := range textSearches {
+		// Split each search phrase into individual words
+		words := strings.Fields(search)
+		allTerms = append(allTerms, words...)
+	}
+
+	// Join all terms with spaces for OR behavior
+	combinedSearch := strings.Join(allTerms, " ")
+
+	return bson.M{"$text": bson.M{"$search": combinedSearch}}
 }
 
 // negateBSON negates a BSON condition using De Morgan's law
