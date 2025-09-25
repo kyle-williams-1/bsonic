@@ -3,7 +3,6 @@ package bsonic
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/kyle-williams-1/bsonic/config"
@@ -103,19 +102,55 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 
 	// If text search is enabled, handle all query types appropriately
 	if p.SearchMode == SearchModeText {
-		// Check if this is a mixed query (field searches + text search) first
-		if p.isMixedQuery(query) {
-			return p.parseMixedQuery(query)
-		}
+		// Check if the language parser supports text search
+		if textSearchParser, ok := p.languageParser.(language.TextSearchParser); ok {
+			// Check if this is a mixed query (field searches + text search) first
+			if textSearchParser.IsMixedQuery(query) {
+				fieldAST, textTerms, err := textSearchParser.ParseMixedQuery(query)
+				if err != nil {
+					return nil, err
+				}
 
-		// Check if this should be a text search query (no field:value pairs)
-		if p.shouldUseTextSearch(query) {
-			return p.parseTextSearch(query)
-		}
+				var conditions []bson.M
 
-		// If we get here, it's a pure field search with text search enabled
-		// Parse it as a regular field query
-		return p.parseFieldQuery(query)
+				if fieldAST != nil {
+					fieldBSON, err := p.formatter.Format(fieldAST)
+					if err != nil {
+						return nil, err
+					}
+					conditions = append(conditions, fieldBSON)
+				}
+
+				if textTerms != "" {
+					conditions = append(conditions, bson.M{"$text": bson.M{"$search": textTerms}})
+				}
+
+				if len(conditions) == 0 {
+					return bson.M{}, nil
+				} else if len(conditions) == 1 {
+					return conditions[0], nil
+				}
+				return bson.M{"$and": conditions}, nil
+			}
+
+			// Check if this should be a text search query (no field:value pairs)
+			if p.shouldUseTextSearch(query) {
+				return p.parseTextSearch(query)
+			}
+
+			// If we get here, it's a pure field search with text search enabled
+			// Parse it as a regular field query
+			return p.parseFieldQuery(query)
+		} else {
+			// Fallback for parsers that don't support text search
+			// Check if this should be a text search query (no field:value pairs)
+			if p.shouldUseTextSearch(query) {
+				return p.parseTextSearch(query)
+			}
+
+			// Parse as regular field query
+			return p.parseFieldQuery(query)
+		}
 	}
 
 	// Text search is disabled, parse as regular field query
@@ -166,116 +201,40 @@ func (p *Parser) parseTextSearch(query string) (bson.M, error) {
 	return bson.M{"$text": bson.M{"$search": trimmed}}, nil
 }
 
-// isMixedQuery determines if a query contains both field searches and text search terms.
-func (p *Parser) isMixedQuery(query string) bool {
-	if p.SearchMode != SearchModeText {
-		return false
-	}
-
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
-		return false
-	}
-
-	// Check if query contains field:value pairs
-	hasFieldPairs := strings.Contains(trimmed, ":")
-	if !hasFieldPairs {
-		return false
-	}
-
-	// Simple check: if we have colons (field:value pairs) and the query is not just field:value pairs,
-	// then it's likely a mixed query
-	parts := strings.Fields(trimmed)
-	hasTextTerms := false
-
-	for _, part := range parts {
-		if !strings.Contains(part, ":") && part != "AND" && part != "OR" && part != "NOT" && part != "(" && part != ")" {
-			hasTextTerms = true
-			break
-		}
-	}
-
-	return hasFieldPairs && hasTextTerms
-}
-
-// parseMixedQuery parses a mixed query containing both field searches and text search.
-func (p *Parser) parseMixedQuery(query string) (bson.M, error) {
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
-		return bson.M{}, nil
-	}
-
-	parts := strings.Fields(trimmed)
-	var fieldParts []string
-	var textParts []string
-
-	for _, part := range parts {
-		if strings.Contains(part, ":") || part == "AND" || part == "OR" || part == "NOT" || part == "(" || part == ")" {
-			fieldParts = append(fieldParts, part)
-		} else {
-			textParts = append(textParts, part)
-		}
-	}
-
-	var conditions []bson.M
-
-	if len(fieldParts) > 0 {
-		fieldQuery := strings.Join(fieldParts, " ")
-		fieldBSON, err := p.parseFieldQuery(fieldQuery)
-		if err != nil {
-			return nil, err
-		}
-		conditions = append(conditions, fieldBSON)
-	}
-
-	if len(textParts) > 0 {
-		textQuery := strings.Join(textParts, " ")
-		conditions = append(conditions, bson.M{"$text": bson.M{"$search": textQuery}})
-	}
-
-	if len(conditions) == 0 {
-		return bson.M{}, nil
-	} else if len(conditions) == 1 {
-		return conditions[0], nil
-	}
-	return bson.M{"$and": conditions}, nil
-}
-
 // parseFieldQuery parses a field-only query (without text search terms).
 func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
 	if strings.TrimSpace(query) == "" {
 		return bson.M{}, nil
 	}
 
-	if p.SearchMode != SearchModeText {
-		if err := p.validateFieldQuery(query); err != nil {
+	// Check if the language parser supports text search and validation
+	if textSearchParser, ok := p.languageParser.(language.TextSearchParser); ok {
+		if p.SearchMode != SearchModeText {
+			if err := textSearchParser.ValidateFieldQuery(query); err != nil {
+				return nil, err
+			}
+		}
+
+		// Use the language parser's ParseFieldQuery method
+		result, err := textSearchParser.ParseFieldQuery(query)
+		if err != nil {
 			return nil, err
 		}
+
+		// If it's already a BSON.M, return it directly
+		if bsonResult, ok := result.(bson.M); ok {
+			return bsonResult, nil
+		}
+
+		// Otherwise, format the AST
+		return p.formatter.Format(result)
 	}
 
+	// Fallback to the original behavior for parsers that don't support text search
 	ast, err := p.languageParser.Parse(query)
 	if err != nil {
 		return nil, err
 	}
 
 	return p.formatter.Format(ast)
-}
-
-// validateFieldQuery validates that a field query doesn't contain standalone text terms when text search is disabled
-func (p *Parser) validateFieldQuery(query string) error {
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
-		return nil
-	}
-
-	if !strings.Contains(trimmed, ":") {
-		words := strings.Fields(trimmed)
-		for _, word := range words {
-			if word != "AND" && word != "OR" && word != "NOT" && word != "(" && word != ")" {
-				return fmt.Errorf("text search term '%s' found but text search is disabled", word)
-			}
-		}
-	}
-
-	return nil
 }
