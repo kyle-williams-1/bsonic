@@ -837,6 +837,36 @@ func TestFreeTextSearch(t *testing.T) {
 			query:    `"John Doe" AND NOT role:guest`,
 			expected: 1, // Should match John Doe who is not a guest
 		},
+		{
+			name:     "unquoted single word free text search",
+			query:    `John`,
+			expected: 1, // Should match John Doe
+		},
+		{
+			name:     "unquoted multiple words free text search",
+			query:    `John Doe`,
+			expected: 1, // Should match John Doe
+		},
+		{
+			name:     "unquoted free text search with field query",
+			query:    `John AND active:true`,
+			expected: 1, // Should match John Doe who is active
+		},
+		{
+			name:     "unquoted free text search with OR condition",
+			query:    `John AND (active:true OR role:admin)`,
+			expected: 1, // Should match John Doe who is active
+		},
+		{
+			name:     "multiple unquoted free text searches with OR",
+			query:    `(John OR Jane) AND active:true`,
+			expected: 2, // Should match both John Doe and Jane Smith who are active
+		},
+		{
+			name:     "mixed quoted and unquoted free text searches",
+			query:    `("John Doe" OR Jane) AND active:true`,
+			expected: 2, // Should match both John Doe and Jane Smith who are active
+		},
 	}
 
 	for _, tc := range testCases {

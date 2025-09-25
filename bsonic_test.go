@@ -1858,6 +1858,109 @@ func TestParseFreeTextSearch(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "Unquoted single word free text search",
+			query: `John`,
+			expected: bson.M{
+				"$text": bson.M{
+					"$search": "John",
+				},
+			},
+		},
+		{
+			name:  "Unquoted multiple words free text search",
+			query: `John Doe`,
+			expected: bson.M{
+				"$text": bson.M{
+					"$search": "John Doe",
+				},
+			},
+		},
+		{
+			name:  "Unquoted free text search with field query",
+			query: `John AND active:true`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John",
+						},
+					},
+					{
+						"active": true,
+					},
+				},
+			},
+		},
+		{
+			name:  "Unquoted free text search with OR condition",
+			query: `John AND (active:true OR role:admin)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John",
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{"role": "admin"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Multiple unquoted free text searches with OR",
+			query: `(John OR Jane) AND active:true`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John Jane",
+						},
+					},
+					{
+						"active": true,
+					},
+				},
+			},
+		},
+		{
+			name:  "Mixed quoted and unquoted free text searches",
+			query: `("John Doe" OR Jane) AND active:true`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John Doe Jane",
+						},
+					},
+					{
+						"active": true,
+					},
+				},
+			},
+		},
+		{
+			name:  "Unquoted free text search with NOT condition",
+			query: `John AND NOT active:false`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": "John",
+						},
+					},
+					{
+						"active": bson.M{
+							"$ne": false,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

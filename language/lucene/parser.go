@@ -43,15 +43,21 @@ type ParticipleFieldValue struct {
 	Value *ParticipleValue `@@`
 }
 
-// ParticipleFreeText represents free text search queries (quoted strings without field names)
+// ParticipleFreeText represents free text search queries (quoted or unquoted text without field names)
 type ParticipleFreeText struct {
-	Value *ParticipleQuotedValue `@@`
+	QuotedValue   *ParticipleQuotedValue   `@@`
+	UnquotedValue *ParticipleUnquotedValue `| @@`
 }
 
-// ParticipleQuotedValue represents only quoted values for free text search
+// ParticipleQuotedValue represents quoted values for free text search
 type ParticipleQuotedValue struct {
 	String       *string `@String`
 	SingleString *string `| @SingleString`
+}
+
+// ParticipleUnquotedValue represents unquoted text for free text search
+type ParticipleUnquotedValue struct {
+	TextTerms []string `@TextTerm+`
 }
 
 // ParticipleValue represents a value that can be a text term or quoted string

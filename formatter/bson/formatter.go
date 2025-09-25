@@ -451,15 +451,25 @@ func (f *Formatter) fieldValueToBSON(fv *lucene.ParticipleFieldValue) bson.M {
 // freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
 func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
 	var valueStr string
-	if ft.Value.String != nil {
-		valueStr = *ft.Value.String
-	} else if ft.Value.SingleString != nil {
-		valueStr = *ft.Value.SingleString
+
+	if ft.QuotedValue != nil {
+		// Handle quoted values
+		if ft.QuotedValue.String != nil {
+			valueStr = *ft.QuotedValue.String
+		} else if ft.QuotedValue.SingleString != nil {
+			valueStr = *ft.QuotedValue.SingleString
+		}
+		// For quoted values, keep them quoted for exact phrase matching
+		return bson.M{"$text": bson.M{"$search": fmt.Sprintf("\"%s\"", valueStr)}}
+	} else if ft.UnquotedValue != nil {
+		// Handle unquoted values
+		valueStr = strings.Join(ft.UnquotedValue.TextTerms, " ")
+		// For unquoted values, use them as-is for term-based search
+		return bson.M{"$text": bson.M{"$search": valueStr}}
 	}
 
-	// For free text search, we use MongoDB's $text operator
-	// The value should be quoted for exact phrase matching
-	return bson.M{"$text": bson.M{"$search": fmt.Sprintf("\"%s\"", valueStr)}}
+	// Fallback (should not happen with proper grammar)
+	return bson.M{"$text": bson.M{"$search": ""}}
 }
 
 // extractTextSearches extracts text search strings from OR conditions
@@ -485,10 +495,11 @@ func (f *Formatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
 		if textMap, ok := textOp.(bson.M); ok {
 			if search, hasSearch := textMap["$search"]; hasSearch {
 				if searchStr, ok := search.(string); ok {
-					// Remove the quotes that were added in freeTextToBSON
+					// For quoted searches, remove the quotes for combination
 					if len(searchStr) >= 2 && searchStr[0] == '"' && searchStr[len(searchStr)-1] == '"' {
 						return searchStr[1 : len(searchStr)-1], true
 					}
+					// For unquoted searches, return as-is
 					return searchStr, true
 				}
 			}
