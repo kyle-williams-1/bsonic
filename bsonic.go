@@ -166,7 +166,7 @@ func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
 		// Validate that this is not a mixed query or text-only query when text search is disabled
 		if p.SearchMode != SearchModeText {
 			if textSearchParser.IsMixedQuery(query) {
-				return nil, errors.New("mixed query (field:value pairs + text terms) requires text search to be enabled")
+				return nil, errors.New("query contains both field searches and text search terms, but text search is disabled")
 			}
 			if err := textSearchParser.ValidateFieldQuery(query); err != nil {
 				return nil, err
