@@ -406,6 +406,10 @@ func (f *Formatter) termToBSON(term *lucene.ParticipleTerm) bson.M {
 		return f.fieldValueToBSON(term.FieldValue)
 	}
 
+	if term.FreeText != nil {
+		return f.freeTextToBSON(term.FreeText)
+	}
+
 	if term.Group != nil {
 		return f.expressionToBSON(term.Group.Expression)
 	}
@@ -435,6 +439,28 @@ func (f *Formatter) fieldValueToBSON(fv *lucene.ParticipleFieldValue) bson.M {
 		value = valueStr
 	}
 	return bson.M{fv.Field: value}
+}
+
+// freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
+func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
+	var valueStr string
+	if len(ft.Value.TextTerms) > 0 {
+		valueStr = strings.Join(ft.Value.TextTerms, " ")
+	} else if ft.Value.String != nil {
+		valueStr = *ft.Value.String
+	} else if ft.Value.SingleString != nil {
+		valueStr = *ft.Value.SingleString
+	} else if ft.Value.Bracketed != nil {
+		valueStr = *ft.Value.Bracketed
+	} else if ft.Value.DateTime != nil {
+		valueStr = *ft.Value.DateTime
+	} else if ft.Value.TimeString != nil {
+		valueStr = *ft.Value.TimeString
+	}
+
+	// For free text search, we use MongoDB's $text operator
+	// The value should be quoted for exact phrase matching
+	return bson.M{"$text": bson.M{"$search": fmt.Sprintf("\"%s\"", valueStr)}}
 }
 
 // negateBSON negates a BSON condition using De Morgan's law
@@ -481,11 +507,16 @@ func (f *Formatter) isSimpleFieldValue(condition bson.M) bool {
 		return false
 	}
 
+	// Check if this is a $text query (free text search)
+	if _, hasText := condition["$text"]; hasText {
+		return false
+	}
+
 	// Check if any field value contains complex operators
 	for _, v := range condition {
 		if vMap, ok := v.(bson.M); ok {
 			for key := range vMap {
-				if key == "$or" || key == "$and" {
+				if key == "$or" || key == "$and" || key == "$text" {
 					return false
 				}
 			}

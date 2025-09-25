@@ -1627,3 +1627,98 @@ func TestFactoryFunctions(t *testing.T) {
 		t.Fatal("CreateBSONFormatter should return a non-nil formatter")
 	}
 }
+
+func TestParseFreeTextSearch(t *testing.T) {
+	parser := bsonic.New()
+
+	tests := []struct {
+		name     string
+		query    string
+		expected bson.M
+	}{
+		{
+			name:  "Simple free text search",
+			query: `"John Doe"`,
+			expected: bson.M{
+				"$text": bson.M{
+					"$search": `"John Doe"`,
+				},
+			},
+		},
+		{
+			name:  "Free text search with single quotes",
+			query: `'John Doe'`,
+			expected: bson.M{
+				"$text": bson.M{
+					"$search": `"John Doe"`,
+				},
+			},
+		},
+		{
+			name:  "Free text search with field query",
+			query: `"John Doe" AND active:true`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"active": true,
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with OR condition",
+			query: `"John Doe" AND (active:true OR role:admin)`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"$or": []bson.M{
+							{"active": true},
+							{"role": "admin"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Free text search with NOT condition",
+			query: `"John Doe" AND NOT active:false`,
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$text": bson.M{
+							"$search": `"John Doe"`,
+						},
+					},
+					{
+						"active": bson.M{
+							"$ne": false,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query, err := parser.Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Parse should not return error for %s, got: %v", tt.name, err)
+			}
+
+			if !compareBSONValues(query, tt.expected) {
+				t.Fatalf("Test %s: Expected %+v, got %+v", tt.name, tt.expected, query)
+			}
+		})
+	}
+}

@@ -33,12 +33,18 @@ type ParticipleNotExpression struct {
 // ParticipleTerm represents individual query terms
 type ParticipleTerm struct {
 	FieldValue *ParticipleFieldValue `@@`
+	FreeText   *ParticipleFreeText   `| @@`
 	Group      *ParticipleGroup      `| @@`
 }
 
 // ParticipleFieldValue represents field:value pairs
 type ParticipleFieldValue struct {
 	Field string           `@TextTerm ":"`
+	Value *ParticipleValue `@@`
+}
+
+// ParticipleFreeText represents free text search queries (quoted strings without field names)
+type ParticipleFreeText struct {
 	Value *ParticipleValue `@@`
 }
 
