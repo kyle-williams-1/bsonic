@@ -15,7 +15,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver.
+A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver. Built with extensibility in mind, supporting multiple query languages and output formatters.
 
 ## Features
 
@@ -30,6 +30,8 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
 - **Full-text search**: Support for MongoDB text search with configurable search modes
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
+- **Extensible architecture**: Easy to add new query languages and output formatters
+- **Configurable**: Flexible configuration system for language and formatter selection
 
 ## Installation
 
@@ -68,6 +70,86 @@ Used when you need to reuse parser instances:
 ```go
 parser := bsonic.New()
 query, err := parser.Parse("name:john AND age:25")
+```
+
+## Extensible Architecture
+
+Bsonic is built with extensibility in mind, allowing you to easily add new query languages and output formatters.
+
+### Configuration System
+
+The library uses a configuration system to specify which language parser and formatter to use:
+
+```go
+import (
+    "github.com/kyle-williams-1/bsonic"
+    "github.com/kyle-williams-1/bsonic/config"
+)
+
+// Default configuration (Lucene + BSON)
+parser := bsonic.New()
+
+// Custom configuration
+cfg := config.Default().
+    WithLanguage(config.LanguageLucene).
+    WithFormatter(config.FormatterBSON)
+
+parser, err := bsonic.NewWithConfig(cfg)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Available Languages
+
+- **Lucene** (`config.LanguageLucene`): Lucene-style query syntax (default)
+
+### Available Formatters
+
+- **BSON** (`config.FormatterBSON`): MongoDB BSON output format (default)
+
+### Text Search Configuration
+
+```go
+// Parser with text search enabled
+parser := bsonic.NewWithTextSearch()
+
+// Or enable text search on existing parser
+parser := bsonic.New()
+parser.SetSearchMode(bsonic.SearchModeText)
+```
+
+### Adding New Languages
+
+To add a new query language (e.g., SQL):
+
+1. Create a new language package implementing the `language.Parser` interface
+2. Add the new language type to `config.LanguageType`
+3. Update the factory to handle the new language type
+
+### Adding New Formatters
+
+To add a new output formatter (e.g., JSON):
+
+1. Create a new formatter package implementing the `formatter.Formatter` interface
+2. Add the new formatter type to `config.FormatterType`
+3. Update the factory to handle the new formatter type
+
+### Package Structure
+
+The library is organized into several packages for maximum modularity:
+
+```
+bsonic/
+├── config/           # Configuration types and defaults
+├── factory/          # Factory functions for creating parsers/formatters
+├── language/         # Query language implementations
+│   ├── interface.go  # Language parser interface
+│   └── lucene/       # Lucene-style query parser
+├── formatter/        # Output formatter implementations
+│   ├── interface.go  # Formatter interface
+│   └── bson/         # BSON output formatter
+└── bsonic.go         # Main parser and public API
 ```
 
 ## Query Syntax
@@ -290,6 +372,14 @@ parser := bsonic.NewWithTextSearch()
 // Or enable text search on an existing parser
 parser := bsonic.New()
 parser.SetSearchMode(bsonic.SearchModeText)
+
+// Text search with custom configuration
+cfg := config.Default().WithLanguage(config.LanguageLucene).WithFormatter(config.FormatterBSON)
+parser, err := bsonic.NewWithConfig(cfg)
+if err != nil {
+    log.Fatal(err)
+}
+parser.SetSearchMode(bsonic.SearchModeText)
 ```
 
 #### Basic Text Search
@@ -369,6 +459,124 @@ query, _ := parser.Parse("devops role:admin OR name:charlie")
 - Text terms (without colons) are combined into a single `$text` search
 - Field:value pairs are parsed as regular field searches
 - Both are combined with `$and` operator for precise filtering
+
+## Migration Guide
+
+### From Previous Versions
+
+The refactoring maintains full backward compatibility. Existing code will continue to work without changes:
+
+```go
+// This still works exactly as before
+query, err := bsonic.Parse("name:john AND age:25")
+
+// This also still works
+parser := bsonic.New()
+query, err := parser.Parse("name:john AND age:25")
+
+// Text search still works the same way
+parser := bsonic.NewWithTextSearch()
+query, err := parser.Parse("search terms")
+```
+
+### New Capabilities
+
+The new architecture adds powerful configuration options:
+
+```go
+// New: Custom configuration
+cfg := config.Default().
+    WithLanguage(config.LanguageLucene).
+    WithFormatter(config.FormatterBSON)
+
+parser, err := bsonic.NewWithConfig(cfg)
+
+// New: Easy to extend for future languages/formatters
+// (When SQL language is added)
+cfg := config.Default().
+    WithLanguage(config.LanguageSQL).
+    WithFormatter(config.FormatterBSON)
+```
+
+## Advanced Usage
+
+### Custom Configuration Examples
+
+```go
+import (
+    "github.com/kyle-williams-1/bsonic"
+    "github.com/kyle-williams-1/bsonic/config"
+)
+
+// Example 1: Explicit configuration
+func createCustomParser() (*bsonic.Parser, error) {
+    cfg := config.Default().
+        WithLanguage(config.LanguageLucene).
+        WithFormatter(config.FormatterBSON)
+    
+    return bsonic.NewWithConfig(cfg)
+}
+
+// Example 2: Reusable parser with text search
+func createTextSearchParser() *bsonic.Parser {
+    parser := bsonic.NewWithTextSearch()
+    return parser
+}
+
+// Example 3: Parser for different use cases
+func createFieldOnlyParser() *bsonic.Parser {
+    parser := bsonic.New() // Text search disabled by default
+    return parser
+}
+```
+
+### Error Handling
+
+```go
+func parseQuerySafely(query string) (bson.M, error) {
+    parser := bsonic.New()
+    
+    result, err := parser.Parse(query)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse query '%s': %w", query, err)
+    }
+    
+    return result, nil
+}
+```
+
+### Performance Considerations
+
+For high-performance applications, reuse parser instances:
+
+```go
+// Good: Reuse parser instance
+var globalParser = bsonic.New()
+
+func processQueries(queries []string) []bson.M {
+    results := make([]bson.M, len(queries))
+    for i, query := range queries {
+        result, err := globalParser.Parse(query)
+        if err != nil {
+            // handle error
+            continue
+        }
+        results[i] = result
+    }
+    return results
+}
+
+// Avoid: Creating new parser for each query
+func processQueriesSlow(queries []string) []bson.M {
+    results := make([]bson.M, len(queries))
+    for i, query := range queries {
+        parser := bsonic.New() // Inefficient!
+        result, err := parser.Parse(query)
+        // ...
+    }
+    return results
+}
+```
 
 ## Integration Testing
 
