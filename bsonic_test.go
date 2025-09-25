@@ -1751,25 +1751,25 @@ func TestAdditionalEdgeCases(t *testing.T) {
 		{
 			name:        "invalid date range both wildcards",
 			query:       "created_at:[* TO *]",
-			expectError: false, // This parses as literal string
+			expectError: false,
 			expected:    bson.M{"created_at": "[* TO *]"},
 		},
 		{
 			name:        "invalid number range both wildcards",
 			query:       "age:[* TO *]",
-			expectError: false, // This parses as literal string
+			expectError: false,
 			expected:    bson.M{"age": "[* TO *]"},
 		},
 		{
 			name:        "invalid date range with bad dates",
 			query:       "created_at:[invalid TO 2023-12-31]",
-			expectError: false, // This parses as literal string
+			expectError: false,
 			expected:    bson.M{"created_at": "[invalid TO 2023-12-31]"},
 		},
 		{
 			name:        "invalid number range with bad numbers",
 			query:       "age:[not-a-number TO 100]",
-			expectError: false, // This parses as literal string
+			expectError: false,
 			expected:    bson.M{"age": "[not-a-number TO 100]"},
 		},
 		{
