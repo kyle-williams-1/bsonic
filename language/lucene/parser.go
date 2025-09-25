@@ -123,19 +123,95 @@ func (p *Parser) IsMixedQuery(query string) bool {
 		return false
 	}
 
-	// Simple check: if we have colons (field:value pairs) and the query is not just field:value pairs,
-	// then it's likely a mixed query
-	parts := strings.Fields(trimmed)
-	hasTextTerms := false
+	// Parse the query to get a more accurate detection
+	ast, err := p.Parse(query)
+	if err != nil {
+		// If parsing fails, fall back to simple string checking
+		parts := strings.Fields(trimmed)
+		hasTextTerms := false
 
-	for _, part := range parts {
-		if !strings.Contains(part, ":") && part != "AND" && part != "OR" && part != "NOT" && part != "(" && part != ")" {
-			hasTextTerms = true
-			break
+		for _, part := range parts {
+			if !strings.Contains(part, ":") && part != "AND" && part != "OR" && part != "NOT" && part != "(" && part != ")" {
+				hasTextTerms = true
+				break
+			}
 		}
+
+		return hasFieldPairs && hasTextTerms
 	}
 
-	return hasFieldPairs && hasTextTerms
+	// Walk the AST to check for mixed content
+	return p.hasMixedContent(ast)
+}
+
+// hasMixedContent walks the AST to determine if it contains both field values and text search terms
+func (p *Parser) hasMixedContent(ast language.AST) bool {
+	// Type assert to our specific AST type
+	if query, ok := ast.(*ParticipleQuery); ok {
+		return p.hasMixedContentInExpression(query.Expression)
+	}
+	return false
+}
+
+// hasMixedContentInExpression recursively checks for mixed content
+func (p *Parser) hasMixedContentInExpression(expr *ParticipleExpression) bool {
+	if expr == nil {
+		return false
+	}
+
+	for _, andExpr := range expr.Or {
+		if p.hasMixedContentInAndExpression(andExpr) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMixedContentInAndExpression checks AND expressions for mixed content
+func (p *Parser) hasMixedContentInAndExpression(andExpr *ParticipleAndExpression) bool {
+	if andExpr == nil {
+		return false
+	}
+
+	for _, notExpr := range andExpr.And {
+		if p.hasMixedContentInNotExpression(notExpr) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMixedContentInNotExpression checks NOT expressions for mixed content
+func (p *Parser) hasMixedContentInNotExpression(notExpr *ParticipleNotExpression) bool {
+	if notExpr == nil {
+		return false
+	}
+
+	if notExpr.Not != nil {
+		return p.hasMixedContentInNotExpression(notExpr.Not)
+	}
+
+	return p.hasMixedContentInTerm(notExpr.Term)
+}
+
+// hasMixedContentInTerm checks individual terms for mixed content
+func (p *Parser) hasMixedContentInTerm(term *ParticipleTerm) bool {
+	if term == nil {
+		return false
+	}
+
+	// Check if this term is a field value
+	hasFieldValue := term.FieldValue != nil
+
+	// Check if this term is a text search term
+	hasTextSearch := term.TextSearch != nil
+
+	// Check if this term is a group (recursively)
+	if term.Group != nil {
+		hasFieldValue = hasFieldValue || p.hasMixedContentInExpression(term.Group.Expression)
+	}
+
+	return hasFieldValue && hasTextSearch
 }
 
 // ParseMixedQuery parses a mixed query containing both field searches and text search.
@@ -209,4 +285,40 @@ func (p *Parser) ParseFieldQuery(query string) (interface{}, error) {
 
 	// Return the AST for the main parser to format
 	return ast, nil
+}
+
+// ShouldUseTextSearch determines if a query should use text search instead of field searches.
+func (p *Parser) ShouldUseTextSearch(query string) bool {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return false
+	}
+
+	// Check if query contains any field:value pairs
+	if strings.Contains(trimmed, ":") {
+		return false
+	}
+
+	// Check if query contains logical operators without field:value pairs
+	// This would be a mixed query that needs special handling
+	parts := strings.Fields(trimmed)
+	for _, part := range parts {
+		if part == "AND" || part == "OR" || part == "NOT" {
+			return false
+		}
+	}
+
+	// If we get here, it's a simple text search query
+	return true
+}
+
+// ParseTextSearch parses a text-only query and returns the text search terms.
+func (p *Parser) ParseTextSearch(query string) (string, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	// Return the trimmed query as text search terms
+	return trimmed, nil
 }

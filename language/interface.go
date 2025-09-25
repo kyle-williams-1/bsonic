@@ -21,4 +21,8 @@ type TextSearchParser interface {
 	ParseMixedQuery(query string) (fieldAST interface{}, textTerms string, err error)
 	// ParseFieldQuery parses a field-only query (without text search terms).
 	ParseFieldQuery(query string) (interface{}, error)
+	// ShouldUseTextSearch determines if a query should use text search instead of field searches.
+	ShouldUseTextSearch(query string) bool
+	// ParseTextSearch parses a text-only query and returns the text search terms.
+	ParseTextSearch(query string) (string, error)
 }

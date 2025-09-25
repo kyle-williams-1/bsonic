@@ -111,31 +111,27 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 					return nil, err
 				}
 
-				var conditions []bson.M
-
+				// Use the formatter's mixed query handling
+				var fieldBSON bson.M
 				if fieldAST != nil {
-					fieldBSON, err := p.formatter.Format(fieldAST)
+					fieldBSON, err = p.formatter.Format(fieldAST)
 					if err != nil {
 						return nil, err
 					}
-					conditions = append(conditions, fieldBSON)
 				}
-
-				if textTerms != "" {
-					conditions = append(conditions, bson.M{"$text": bson.M{"$search": textTerms}})
-				}
-
-				if len(conditions) == 0 {
-					return bson.M{}, nil
-				} else if len(conditions) == 1 {
-					return conditions[0], nil
-				}
-				return bson.M{"$and": conditions}, nil
+				// Use the formatter's FormatMixedQuery method
+				return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatMixedQuery(fieldBSON, textTerms)
 			}
 
 			// Check if this should be a text search query (no field:value pairs)
-			if p.shouldUseTextSearch(query) {
-				return p.parseTextSearch(query)
+			if textSearchParser.ShouldUseTextSearch(query) {
+				textTerms, err := textSearchParser.ParseTextSearch(query)
+				if err != nil {
+					return nil, err
+				}
+
+				// Use the formatter's text search handling
+				return p.formatter.(formatter.TextSearchFormatter[bson.M]).FormatTextSearch(textTerms)
 			}
 
 			// If we get here, it's a pure field search with text search enabled
@@ -143,62 +139,13 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 			return p.parseFieldQuery(query)
 		} else {
 			// Fallback for parsers that don't support text search
-			// Check if this should be a text search query (no field:value pairs)
-			if p.shouldUseTextSearch(query) {
-				return p.parseTextSearch(query)
-			}
-
-			// Parse as regular field query
+			// This shouldn't happen in practice, but handle gracefully
 			return p.parseFieldQuery(query)
 		}
 	}
 
 	// Text search is disabled, parse as regular field query
 	return p.parseFieldQuery(query)
-}
-
-// shouldUseTextSearch determines if a query should use text search instead of field searches.
-func (p *Parser) shouldUseTextSearch(query string) bool {
-	if p.SearchMode != SearchModeText {
-		return false
-	}
-
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
-		return false
-	}
-
-	// Check if query contains any field:value pairs
-	if strings.Contains(trimmed, ":") {
-		return false
-	}
-
-	// Check if query contains logical operators without field:value pairs
-	// This would be a mixed query that needs special handling
-	parts := strings.Fields(trimmed)
-	for _, part := range parts {
-		if part == "AND" || part == "OR" || part == "NOT" {
-			return false
-		}
-	}
-
-	// If we get here, it's a simple text search query
-	return true
-}
-
-// parseTextSearch parses a text search query and returns a BSON document with $text operator.
-func (p *Parser) parseTextSearch(query string) (bson.M, error) {
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
-		return bson.M{}, nil
-	}
-
-	// Only SearchModeText is supported for text search
-	if p.SearchMode != SearchModeText {
-		return nil, errors.New("text search requires SearchModeText")
-	}
-
-	return bson.M{"$text": bson.M{"$search": trimmed}}, nil
 }
 
 // parseFieldQuery parses a field-only query (without text search terms).
@@ -209,28 +156,18 @@ func (p *Parser) parseFieldQuery(query string) (bson.M, error) {
 
 	// Check if the language parser supports text search and validation
 	if textSearchParser, ok := p.languageParser.(language.TextSearchParser); ok {
+		// Validate that this is not a mixed query or text-only query when text search is disabled
 		if p.SearchMode != SearchModeText {
+			if textSearchParser.IsMixedQuery(query) {
+				return nil, errors.New("mixed query (field:value pairs + text terms) requires text search to be enabled")
+			}
 			if err := textSearchParser.ValidateFieldQuery(query); err != nil {
 				return nil, err
 			}
 		}
-
-		// Use the language parser's ParseFieldQuery method
-		result, err := textSearchParser.ParseFieldQuery(query)
-		if err != nil {
-			return nil, err
-		}
-
-		// If it's already a BSON.M, return it directly
-		if bsonResult, ok := result.(bson.M); ok {
-			return bsonResult, nil
-		}
-
-		// Otherwise, format the AST
-		return p.formatter.Format(result)
 	}
 
-	// Fallback to the original behavior for parsers that don't support text search
+	// Parse the query and let the formatter handle it
 	ast, err := p.languageParser.Parse(query)
 	if err != nil {
 		return nil, err

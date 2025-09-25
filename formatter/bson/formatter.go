@@ -23,6 +23,7 @@ func New() *Formatter {
 
 // Ensure Formatter implements the generic interface
 var _ formatter.Formatter[bson.M] = (*Formatter)(nil)
+var _ formatter.TextSearchFormatter[bson.M] = (*Formatter)(nil)
 
 // Format converts a parsed query AST into a BSON document.
 func (f *Formatter) Format(ast interface{}) (bson.M, error) {
@@ -433,4 +434,36 @@ func (f *Formatter) isSimpleFieldValue(condition bson.M) bool {
 		}
 	}
 	return true
+}
+
+// FormatTextSearch formats text search terms into a BSON document.
+func (f *Formatter) FormatTextSearch(textTerms string) (bson.M, error) {
+	if strings.TrimSpace(textTerms) == "" {
+		return bson.M{}, nil
+	}
+	return bson.M{"$text": bson.M{"$search": textTerms}}, nil
+}
+
+// FormatMixedQuery formats a mixed query with both field and text search components.
+func (f *Formatter) FormatMixedQuery(fieldResult bson.M, textTerms string) (bson.M, error) {
+	var conditions []bson.M
+
+	if len(fieldResult) > 0 {
+		conditions = append(conditions, fieldResult)
+	}
+
+	if strings.TrimSpace(textTerms) != "" {
+		textBSON, err := f.FormatTextSearch(textTerms)
+		if err != nil {
+			return nil, err
+		}
+		conditions = append(conditions, textBSON)
+	}
+
+	if len(conditions) == 0 {
+		return bson.M{}, nil
+	} else if len(conditions) == 1 {
+		return conditions[0], nil
+	}
+	return bson.M{"$and": conditions}, nil
 }

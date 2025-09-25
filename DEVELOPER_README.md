@@ -14,6 +14,7 @@ This document provides a comprehensive technical overview of the BSONIC library'
 - [Error Handling](#error-handling)
 - [Performance](#performance)
 - [Extension Guide](#extension-guide)
+- [Architectural Benefits](#architectural-benefits)
 
 ## Architecture Overview
 
@@ -34,11 +35,13 @@ Input Query String
     ┌─────────────────┬─────────────────┬─────────────────┐
     │   Field Query   │   Text Search   │   Mixed Query   │
     │                 │                 │                 │
-    │ [Participle]    │ [Direct BSON]   │ [Split & Parse] │
-    │ Lexer → Parser  │ Generation      │ Both Methods    │
-    │        ↓        │        ↓        │        ↓        │
-    │ [AST Walker]    │ {"$text": {...}}│ [Combine BSON]  │
-    │        ↓        │                 │        ↓        │
+    │ [Participle]    │ [Text Parser]   │ [Mixed Parser]  │
+    │ Lexer → Parser  │ → Text Terms    │ → Field AST +   │
+    │        ↓        │        ↓        │    Text Terms   │
+    │ [AST Walker]    │ [Text Formatter]│        ↓        │
+    │        ↓        │        ↓        │ [Mixed Formatter]│
+    │ [Field Formatter]│ {"$text": {...}}│        ↓        │
+    │        ↓        │                 │ [Combine BSON]  │
     └────────┴────────┴─────────────────┴────────┴────────┘
              ↓                                    ↓
     [BSON Document] ←─────────────────────────────┘
@@ -69,17 +72,44 @@ bsonic/
 
 ### Interface-Based Architecture
 
-**Language Parser Interface:**
+**Base Language Parser Interface:**
 ```go
 type Parser interface {
     Parse(query string) (AST, error)
 }
 ```
 
-**Formatter Interface:**
+**Text Search Parser Interface:**
+```go
+type TextSearchParser interface {
+    Parser
+    // Query type detection
+    IsMixedQuery(query string) bool
+    ShouldUseTextSearch(query string) bool
+    // Query parsing
+    ParseMixedQuery(query string) (fieldAST interface{}, textTerms string, err error)
+    ParseTextSearch(query string) (string, error)
+    ParseFieldQuery(query string) (interface{}, error)
+    // Validation
+    ValidateFieldQuery(query string) error
+}
+```
+
+**Base Formatter Interface:**
 ```go
 type Formatter[T any] interface {
     Format(ast interface{}) (T, error)
+}
+```
+
+**Text Search Formatter Interface:**
+```go
+type TextSearchFormatter[T any] interface {
+    Formatter[T]
+    // Text search formatting
+    FormatTextSearch(textTerms string) (T, error)
+    // Mixed query formatting
+    FormatMixedQuery(fieldResult T, textTerms string) (T, error)
 }
 ```
 
@@ -100,19 +130,26 @@ cfg := config.Default().
 ## Core Components
 
 ### Main Parser (`bsonic.go`)
-- **Parser**: Main entry point with configurable search modes and extensible architecture
-- **Query Type Detection**: Determines whether to use field search, text search, or mixed queries
-- **Orchestration**: Coordinates between language parsers and formatters
+- **Generic Orchestration**: Pure coordination between language parsers and formatters
+- **No Language-Specific Logic**: All parsing logic delegated to language parsers
+- **No Output-Specific Logic**: All formatting logic delegated to formatters
+- **Query Type Detection**: Delegated to language parser's `IsMixedQuery()` and `ShouldUseTextSearch()`
 
 ### Language System (`language/`)
-- **Language Interface**: Defines contract for query language parsers
-- **Lucene Parser**: Participle-based implementation for Lucene-style syntax
+- **Base Parser Interface**: Defines contract for basic query language parsers
+- **Text Search Parser Interface**: Extended interface for parsers supporting text search
+- **Lucene Parser**: Implements both interfaces with Participle-based parsing
+- **Query Type Detection**: Language-specific logic for identifying mixed queries and text search
+- **Query Parsing**: Language-specific parsing of field queries, text search, and mixed queries
 - **Participle Grammar**: Defines the Lucene-style query syntax structure
 - **Lexer**: Tokenizes input strings into recognized tokens
 
 ### Formatter System (`formatter/`)
-- **Formatter Interface**: Generic interface for output formatters
-- **BSON Formatter**: Converts AST to MongoDB BSON documents
+- **Base Formatter Interface**: Generic interface for output formatters
+- **Text Search Formatter Interface**: Extended interface for formatters supporting text search
+- **BSON Formatter**: Implements both interfaces for MongoDB BSON output
+- **Text Search Formatting**: MongoDB-specific `$text` operator formatting
+- **Mixed Query Formatting**: MongoDB-specific `$and` operator for combining field and text search
 - **AST Walker**: Converts Participle AST nodes to MongoDB BSON operations
 - **Value Parser**: Handles type detection and special syntax (wildcards, ranges, dates)
 
@@ -186,11 +223,23 @@ formatter, err := factory.CreateFormatter(cfg.Formatter)
 
 ### Query Type Detection
 
-The parser determines query type based on search mode and content:
+The language parser determines query type based on search mode and content:
 
-- **Field Query**: `name:john AND age:25`
-- **Text Search**: `software engineer` (with SearchModeText)
-- **Mixed Query**: `engineer role:admin AND active:true` (combines both)
+- **Field Query**: `name:john AND age:25` (detected by `ShouldUseTextSearch()` returning false)
+- **Text Search**: `software engineer` (detected by `ShouldUseTextSearch()` returning true)
+- **Mixed Query**: `engineer role:admin AND active:true` (detected by `IsMixedQuery()` returning true)
+
+### Processing Flow
+
+1. **Query Type Detection**: Language parser determines query type using `IsMixedQuery()` and `ShouldUseTextSearch()`
+2. **Query Parsing**: Language parser parses the query using appropriate method:
+   - `ParseFieldQuery()` for field queries
+   - `ParseTextSearch()` for text search queries  
+   - `ParseMixedQuery()` for mixed queries
+3. **Output Formatting**: Formatter converts parsed data to output format:
+   - `Format()` for field queries
+   - `FormatTextSearch()` for text search queries
+   - `FormatMixedQuery()` for mixed queries
 
 ### Processing Examples
 
@@ -332,8 +381,34 @@ type Parser struct {
     // SQL-specific parser implementation
 }
 
+// Implement base Parser interface
 func (p *Parser) Parse(query string) (language.AST, error) {
     // Parse SQL query and return AST
+}
+
+// Implement TextSearchParser interface for text search support
+func (p *Parser) IsMixedQuery(query string) bool {
+    // SQL-specific mixed query detection
+}
+
+func (p *Parser) ShouldUseTextSearch(query string) bool {
+    // SQL-specific text search detection
+}
+
+func (p *Parser) ParseMixedQuery(query string) (interface{}, string, error) {
+    // Parse mixed SQL query, return field AST and text terms
+}
+
+func (p *Parser) ParseTextSearch(query string) (string, error) {
+    // Parse text-only SQL query
+}
+
+func (p *Parser) ParseFieldQuery(query string) (interface{}, error) {
+    // Parse field-only SQL query
+}
+
+func (p *Parser) ValidateFieldQuery(query string) error {
+    // Validate field query doesn't contain text terms when text search disabled
 }
 ```
 
@@ -374,8 +449,20 @@ type Formatter struct {
     // JSON-specific formatter implementation
 }
 
+// Implement base Formatter interface
 func (f *Formatter) Format(ast interface{}) (string, error) {
     // Convert AST to JSON string
+}
+
+// Implement TextSearchFormatter interface for text search support
+func (f *Formatter) FormatTextSearch(textTerms string) (string, error) {
+    // Convert text search terms to JSON format
+    // e.g., return `{"text_search": "software engineer"}`
+}
+
+func (f *Formatter) FormatMixedQuery(fieldResult string, textTerms string) (string, error) {
+    // Combine field query result with text search terms
+    // e.g., return `{"$and": [fieldResult, {"text_search": textTerms}]}`
 }
 ```
 
@@ -421,14 +508,40 @@ result, err := parser.Parse("SELECT * FROM users WHERE age > 25")
 // result is now a JSON string
 ```
 
+## Architectural Benefits
+
+### True Separation of Concerns
+
+The new architecture achieves complete separation between language parsing and output formatting:
+
+- **Main Parser**: Pure orchestration with no language-specific or output-specific logic
+- **Language Parsers**: Handle all query type detection and parsing logic
+- **Formatters**: Handle all output format conversion logic
+- **No Cross-Contamination**: Language parsers don't know about output formats, formatters don't know about query languages
+
+### Extensibility Without Modification
+
+- **Add New Languages**: Implement `TextSearchParser` interface, no changes to main parser
+- **Add New Output Formats**: Implement `TextSearchFormatter` interface, no changes to main parser
+- **Mix and Match**: Any language parser can work with any formatter
+- **Backward Compatibility**: Existing code continues to work unchanged
+
+### Clean Interface Design
+
+- **Base Interfaces**: `Parser` and `Formatter` for basic functionality
+- **Extended Interfaces**: `TextSearchParser` and `TextSearchFormatter` for advanced features
+- **Optional Features**: Languages and formatters can opt into text search support
+- **Type Safety**: Compile-time validation of interface implementations
+
 ## Conclusion
 
 BSONIC's extensible architecture combines the power of Participle for robust parsing with a flexible plugin system for languages and formatters. This design provides:
 
 - **Robust parsing** through Participle's battle-tested lexer and grammar system
-- **Full extensibility** for new query languages and output formats
-- **Type safety** through Go's generic type system
-- **Clean separation of concerns** with modular package design
+- **True extensibility** for new query languages and output formats without modifying core code
+- **Type safety** through Go's generic type system and interface design
+- **Clean separation of concerns** with modular package design and no cross-contamination
 - **Easy configuration** through the builder pattern API
+- **Future-proof design** that can accommodate new query types and output formats
 
 The architecture is designed to grow with your needs, allowing you to add new query languages (SQL, GraphQL, etc.) and output formats (JSON, XML, etc.) without modifying the core parsing logic.
