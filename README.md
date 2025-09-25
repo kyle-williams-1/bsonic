@@ -593,6 +593,16 @@ Check out the [examples](examples/) directory for more detailed usage examples.
 
 Contributions are welcome! Please open an issue or pull request on GitHub.
 
+### Development Setup
+
+For development, you'll need:
+
+1. **Go 1.25+**: [Download from golang.org](https://golang.org/dl/)
+2. **golangci-lint**: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
+3. **Docker** (for integration tests): [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+See [DEPENDENCIES.md](DEPENDENCIES.md) for complete dependency information.
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
