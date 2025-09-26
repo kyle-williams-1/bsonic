@@ -20,8 +20,6 @@ func New() *Formatter {
 	return &Formatter{}
 }
 
-// Note: Interface compliance is checked at compile time by the main package
-
 // Format converts a parsed query AST into a BSON document.
 func (f *Formatter) Format(ast interface{}) (bson.M, error) {
 	// Type assert to the ParticipleQuery AST type from the Lucene parser
@@ -129,35 +127,52 @@ func (f *Formatter) parseRange(valueStr string) (interface{}, error) {
 
 // parseComparison parses comparison operators like >value, <value, >=value, <=value
 func (f *Formatter) parseComparison(valueStr string) (interface{}, error) {
-	var operator string
-	var value string
-
-	if strings.HasPrefix(valueStr, ">=") {
-		operator = "$gte"
-		value = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, "<=") {
-		operator = "$lte"
-		value = valueStr[2:]
-	} else if strings.HasPrefix(valueStr, ">") {
-		operator = "$gt"
-		value = valueStr[1:]
-	} else if strings.HasPrefix(valueStr, "<") {
-		operator = "$lt"
-		value = valueStr[1:]
-	} else {
-		return nil, errors.New("invalid comparison operator")
+	operator, value, err := f.extractOperatorAndValue(valueStr)
+	if err != nil {
+		return nil, err
 	}
 
 	value = strings.TrimSpace(value)
 
 	if f.isDateLike(value) {
-		date, err := f.parseDate(value)
-		if err != nil {
-			return nil, err
-		}
-		return bson.M{operator: date}, nil
+		return f.parseDateComparison(operator, value)
 	}
 
+	return f.parseNumberComparison(operator, value)
+}
+
+// extractOperatorAndValue extracts the operator and value from a comparison string
+func (f *Formatter) extractOperatorAndValue(valueStr string) (string, string, error) {
+	comparisonOperators := []struct {
+		prefix   string
+		operator string
+	}{
+		{">=", "$gte"},
+		{"<=", "$lte"},
+		{">", "$gt"},
+		{"<", "$lt"},
+	}
+
+	for _, op := range comparisonOperators {
+		if strings.HasPrefix(valueStr, op.prefix) {
+			return op.operator, valueStr[len(op.prefix):], nil
+		}
+	}
+
+	return "", "", errors.New("invalid comparison operator")
+}
+
+// parseDateComparison parses a date comparison
+func (f *Formatter) parseDateComparison(operator, value string) (interface{}, error) {
+	date, err := f.parseDate(value)
+	if err != nil {
+		return nil, err
+	}
+	return bson.M{operator: date}, nil
+}
+
+// parseNumberComparison parses a number comparison
+func (f *Formatter) parseNumberComparison(operator, value string) (interface{}, error) {
 	num, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid number: %v", err)
@@ -213,31 +228,49 @@ func (f *Formatter) isStartsWithPattern(valueStr string) bool {
 
 // parseDateRange parses date range queries
 func (f *Formatter) parseDateRange(startStr, endStr string) (interface{}, error) {
-	result := bson.M{}
+	if err := f.validateDateRange(startStr, endStr); err != nil {
+		return nil, err
+	}
 
 	if startStr == "*" {
-		if endStr == "*" {
-			return nil, errors.New("invalid date range: both start and end cannot be wildcards")
-		}
+		return f.parseDateRangeWithWildcardStart(endStr)
+	}
+
+	return f.parseDateRangeWithStart(startStr, endStr)
+}
+
+// validateDateRange validates that the date range is valid
+func (f *Formatter) validateDateRange(startStr, endStr string) error {
+	if startStr == "*" && endStr == "*" {
+		return errors.New("invalid date range: both start and end cannot be wildcards")
+	}
+	return nil
+}
+
+// parseDateRangeWithWildcardStart parses a date range with wildcard start
+func (f *Formatter) parseDateRangeWithWildcardStart(endStr string) (interface{}, error) {
+	endDate, err := f.parseDate(endStr)
+	if err != nil {
+		return nil, err
+	}
+	return bson.M{"$lte": endDate}, nil
+}
+
+// parseDateRangeWithStart parses a date range with a start value
+func (f *Formatter) parseDateRangeWithStart(startStr, endStr string) (interface{}, error) {
+	startDate, err := f.parseDate(startStr)
+	if err != nil {
+		return nil, err
+	}
+
+	result := bson.M{"$gte": startDate}
+
+	if endStr != "*" {
 		endDate, err := f.parseDate(endStr)
 		if err != nil {
 			return nil, err
 		}
 		result["$lte"] = endDate
-	} else {
-		startDate, err := f.parseDate(startStr)
-		if err != nil {
-			return nil, err
-		}
-		result["$gte"] = startDate
-
-		if endStr != "*" {
-			endDate, err := f.parseDate(endStr)
-			if err != nil {
-				return nil, err
-			}
-			result["$lte"] = endDate
-		}
 	}
 
 	return result, nil
@@ -269,31 +302,49 @@ func (f *Formatter) parseDate(dateStr string) (time.Time, error) {
 
 // parseNumberRange parses number range queries
 func (f *Formatter) parseNumberRange(startStr, endStr string) (interface{}, error) {
-	result := bson.M{}
+	if err := f.validateNumberRange(startStr, endStr); err != nil {
+		return nil, err
+	}
 
 	if startStr == "*" {
-		if endStr == "*" {
-			return nil, errors.New("invalid number range: both start and end cannot be wildcards")
-		}
+		return f.parseNumberRangeWithWildcardStart(endStr)
+	}
+
+	return f.parseNumberRangeWithStart(startStr, endStr)
+}
+
+// validateNumberRange validates that the number range is valid
+func (f *Formatter) validateNumberRange(startStr, endStr string) error {
+	if startStr == "*" && endStr == "*" {
+		return errors.New("invalid number range: both start and end cannot be wildcards")
+	}
+	return nil
+}
+
+// parseNumberRangeWithWildcardStart parses a number range with wildcard start
+func (f *Formatter) parseNumberRangeWithWildcardStart(endStr string) (interface{}, error) {
+	endNum, err := strconv.ParseFloat(endStr, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end number: %v", err)
+	}
+	return bson.M{"$lte": endNum}, nil
+}
+
+// parseNumberRangeWithStart parses a number range with a start value
+func (f *Formatter) parseNumberRangeWithStart(startStr, endStr string) (interface{}, error) {
+	startNum, err := strconv.ParseFloat(startStr, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start number: %v", err)
+	}
+
+	result := bson.M{"$gte": startNum}
+
+	if endStr != "*" {
 		endNum, err := strconv.ParseFloat(endStr, 64)
 		if err != nil {
 			return nil, fmt.Errorf("invalid end number: %v", err)
 		}
 		result["$lte"] = endNum
-	} else {
-		startNum, err := strconv.ParseFloat(startStr, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start number: %v", err)
-		}
-		result["$gte"] = startNum
-
-		if endStr != "*" {
-			endNum, err := strconv.ParseFloat(endStr, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid end number: %v", err)
-			}
-			result["$lte"] = endNum
-		}
 	}
 
 	return result, nil
@@ -424,26 +475,79 @@ func (f *Formatter) termToBSON(term *lucene.ParticipleTerm) bson.M {
 
 // fieldValueToBSON converts a ParticipleFieldValue to BSON
 func (f *Formatter) fieldValueToBSON(fv *lucene.ParticipleFieldValue) bson.M {
-	var valueStr string
-	if len(fv.Value.TextTerms) > 0 {
-		valueStr = strings.Join(fv.Value.TextTerms, " ")
-	} else if fv.Value.String != nil {
-		valueStr = *fv.Value.String
-	} else if fv.Value.SingleString != nil {
-		valueStr = *fv.Value.SingleString
-	} else if fv.Value.Bracketed != nil {
-		valueStr = *fv.Value.Bracketed
-	} else if fv.Value.DateTime != nil {
-		valueStr = *fv.Value.DateTime
-	} else if fv.Value.TimeString != nil {
-		valueStr = *fv.Value.TimeString
-	}
-
+	valueStr := f.extractValueString(fv.Value)
 	value, err := f.parseValue(valueStr)
 	if err != nil {
 		value = valueStr
 	}
 	return bson.M{fv.Field: value}
+}
+
+// extractValueString extracts the string value from a ParticipleValue
+func (f *Formatter) extractValueString(value *lucene.ParticipleValue) string {
+	valueExtractors := []func(*lucene.ParticipleValue) (string, bool){
+		f.extractTextTerms,
+		f.extractString,
+		f.extractSingleString,
+		f.extractBracketed,
+		f.extractDateTime,
+		f.extractTimeString,
+	}
+
+	for _, extractor := range valueExtractors {
+		if str, found := extractor(value); found {
+			return str
+		}
+	}
+	return ""
+}
+
+// extractTextTerms extracts text terms from ParticipleValue
+func (f *Formatter) extractTextTerms(value *lucene.ParticipleValue) (string, bool) {
+	if len(value.TextTerms) > 0 {
+		return strings.Join(value.TextTerms, " "), true
+	}
+	return "", false
+}
+
+// extractString extracts string from ParticipleValue
+func (f *Formatter) extractString(value *lucene.ParticipleValue) (string, bool) {
+	if value.String != nil {
+		return *value.String, true
+	}
+	return "", false
+}
+
+// extractSingleString extracts single string from ParticipleValue
+func (f *Formatter) extractSingleString(value *lucene.ParticipleValue) (string, bool) {
+	if value.SingleString != nil {
+		return *value.SingleString, true
+	}
+	return "", false
+}
+
+// extractBracketed extracts bracketed value from ParticipleValue
+func (f *Formatter) extractBracketed(value *lucene.ParticipleValue) (string, bool) {
+	if value.Bracketed != nil {
+		return *value.Bracketed, true
+	}
+	return "", false
+}
+
+// extractDateTime extracts datetime from ParticipleValue
+func (f *Formatter) extractDateTime(value *lucene.ParticipleValue) (string, bool) {
+	if value.DateTime != nil {
+		return *value.DateTime, true
+	}
+	return "", false
+}
+
+// extractTimeString extracts time string from ParticipleValue
+func (f *Formatter) extractTimeString(value *lucene.ParticipleValue) (string, bool) {
+	if value.TimeString != nil {
+		return *value.TimeString, true
+	}
+	return "", false
 }
 
 // freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
@@ -489,21 +593,42 @@ func (f *Formatter) extractTextSearches(andExpressions []*lucene.ParticipleAndEx
 
 // extractTextSearchString extracts the search string from a $text BSON expression
 func (f *Formatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
-	if textOp, hasText := bsonResult["$text"]; hasText {
-		if textMap, ok := textOp.(bson.M); ok {
-			if search, hasSearch := textMap["$search"]; hasSearch {
-				if searchStr, ok := search.(string); ok {
-					// For quoted searches, remove the quotes for combination
-					if len(searchStr) >= 2 && searchStr[0] == '"' && searchStr[len(searchStr)-1] == '"' {
-						return searchStr[1 : len(searchStr)-1], true
-					}
-					// For unquoted searches, return as-is
-					return searchStr, true
-				}
-			}
-		}
+	textOp, hasText := bsonResult["$text"]
+	if !hasText {
+		return "", false
 	}
-	return "", false
+
+	textMap, ok := textOp.(bson.M)
+	if !ok {
+		return "", false
+	}
+
+	search, hasSearch := textMap["$search"]
+	if !hasSearch {
+		return "", false
+	}
+
+	searchStr, ok := search.(string)
+	if !ok {
+		return "", false
+	}
+
+	return f.processSearchString(searchStr), true
+}
+
+// processSearchString processes the search string by removing quotes if present
+func (f *Formatter) processSearchString(searchStr string) string {
+	// For quoted searches, remove the quotes for combination
+	if f.isQuotedString(searchStr) {
+		return searchStr[1 : len(searchStr)-1]
+	}
+	// For unquoted searches, return as-is
+	return searchStr
+}
+
+// isQuotedString checks if a string is wrapped in quotes
+func (f *Formatter) isQuotedString(s string) bool {
+	return len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"'
 }
 
 // combineTextSearches combines multiple text search strings into a single $text expression
@@ -560,27 +685,38 @@ func (f *Formatter) isSimpleFieldValue(condition bson.M) bool {
 	}
 
 	// Check if the condition itself has complex operators
-	if _, hasOr := condition["$or"]; hasOr {
-		return false
-	}
-	if _, hasAnd := condition["$and"]; hasAnd {
-		return false
-	}
-
-	// Check if this is a $text query (free text search)
-	if _, hasText := condition["$text"]; hasText {
+	if f.hasComplexOperators(condition) {
 		return false
 	}
 
 	// Check if any field value contains complex operators
+	return !f.hasComplexFieldValues(condition)
+}
+
+// hasComplexOperators checks if a BSON condition contains complex operators
+func (f *Formatter) hasComplexOperators(condition bson.M) bool {
+	complexOperators := []string{"$or", "$and", "$text"}
+	for _, op := range complexOperators {
+		if _, hasOp := condition[op]; hasOp {
+			return true
+		}
+	}
+	return false
+}
+
+// hasComplexFieldValues checks if any field value contains complex operators
+func (f *Formatter) hasComplexFieldValues(condition bson.M) bool {
+	complexOperators := []string{"$or", "$and", "$text"}
 	for _, v := range condition {
 		if vMap, ok := v.(bson.M); ok {
 			for key := range vMap {
-				if key == "$or" || key == "$and" || key == "$text" {
-					return false
+				for _, op := range complexOperators {
+					if key == op {
+						return true
+					}
 				}
 			}
 		}
 	}
-	return true
+	return false
 }

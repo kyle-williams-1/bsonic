@@ -21,6 +21,8 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 
 - **Lucene-style syntax**: Write queries in familiar Lucene format
 - **Field matching**: Support for exact matches and wildcard patterns
+- **Free text search**: Full-text search support with MongoDB `$text` operator
+- **Mixed queries**: Combine text search with field-specific queries
 - **Dot notation**: Query nested data structures using dot notation
 - **Array search**: Search within array fields
 - **Logical operators**: Support for AND, OR, and NOT operations
@@ -117,7 +119,7 @@ To add a new query language (e.g., SQL):
 
 ### Adding New Formatters
 
-To add a new output formatter (e.g., JSON):
+To add a new output formatter (e.g., for a different document database):
 
 1. Create a new formatter package implementing the `formatter.Formatter` interface
 2. Add the new formatter type to `config.FormatterType`
@@ -130,14 +132,13 @@ The library is organized into several packages for maximum modularity:
 ```
 bsonic/
 ├── config/           # Configuration types and defaults
-├── factory/          # Factory functions for creating parsers/formatters
 ├── language/         # Query language implementations
 │   ├── interface.go  # Language parser interface
 │   └── lucene/       # Lucene-style query parser
 ├── formatter/        # Output formatter implementations
 │   ├── interface.go  # Formatter interface
 │   └── bson/         # BSON output formatter
-└── bsonic.go         # Main parser and public API
+└── bsonic.go         # Main parser, public API, and factory functions
 ```
 
 ## Query Syntax
@@ -170,6 +171,26 @@ query, _ := bsonic.Parse("user.profile.email:john@example.com")
 ```go
 query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
+```
+
+### Free Text Search
+
+```go
+// Quoted text search
+query, _ := bsonic.Parse(`"John Doe"`)
+// BSON: {"$text": {"$search": "\"John Doe\""}}
+
+// Unquoted text search
+query, _ := bsonic.Parse("software engineer")
+// BSON: {"$text": {"$search": "software engineer"}}
+
+// Mixed text and field queries
+query, _ := bsonic.Parse(`"John Doe" AND active:true`)
+// BSON: {"$and": [{"$text": {"$search": "\"John Doe\""}}, {"active": true}]}
+
+// Text search with complex field conditions
+query, _ := bsonic.Parse(`"software engineer" AND (role:admin OR department:engineering)`)
+// BSON: {"$and": [{"$text": {"$search": "\"software engineer\""}}, {"$or": [{"role": "admin"}, {"department": "engineering"}]}]}
 ```
 
 ### Logical Operators
@@ -345,68 +366,6 @@ query, _ := parser.Parse("created_at:2023-01-15")
 // String values (default)
 query, _ := parser.Parse("name:john")
 // BSON: {"name": "john"}
-```
-
-## Migration Guide
-
-### From Previous Versions
-
-The refactoring maintains full backward compatibility. Existing code will continue to work without changes:
-
-```go
-// This still works exactly as before
-query, err := bsonic.Parse("name:john AND age:25")
-
-// This also still works
-parser := bsonic.New()
-query, err := parser.Parse("name:john AND age:25")
-
-```
-
-### New Capabilities
-
-The new architecture adds powerful configuration options:
-
-```go
-// New: Custom configuration
-cfg := config.Default().
-    WithLanguage(config.LanguageLucene).
-    WithFormatter(config.FormatterBSON)
-
-parser, err := bsonic.NewWithConfig(cfg)
-
-// New: Easy to extend for future languages/formatters
-// (When SQL language is added)
-cfg := config.Default().
-    WithLanguage(config.LanguageSQL).
-    WithFormatter(config.FormatterBSON)
-```
-
-## Advanced Usage
-
-### Custom Configuration Examples
-
-```go
-import (
-    "github.com/kyle-williams-1/bsonic"
-    "github.com/kyle-williams-1/bsonic/config"
-)
-
-// Example 1: Explicit configuration
-func createCustomParser() (*bsonic.Parser, error) {
-    cfg := config.Default().
-        WithLanguage(config.LanguageLucene).
-        WithFormatter(config.FormatterBSON)
-    
-    return bsonic.NewWithConfig(cfg)
-}
-
-
-// Example 2: Parser for different use cases
-func createFieldOnlyParser() *bsonic.Parser {
-    parser := bsonic.New()
-    return parser
-}
 ```
 
 ### Error Handling

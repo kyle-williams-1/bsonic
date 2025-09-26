@@ -13,7 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Parser represents a query parser for MongoDB BSON filters.
+// Parser represents a query parser for the selected language and bson formatter.
 type Parser struct {
 	// Config holds the language and formatter configuration
 	Config *config.Config
