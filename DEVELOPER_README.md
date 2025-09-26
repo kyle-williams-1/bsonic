@@ -49,10 +49,10 @@ bsonic/
 ├── config/           # Configuration management
 │   └── config.go     # Language and formatter types
 ├── language/         # Query language implementations
-│   ├── interface.go  # Language parser interface
+│   ├── parser.go     # Language parser interface
 │   └── lucene/       # Lucene-style parser (Participle-based)
 ├── formatter/        # Output formatter implementations
-│   ├── interface.go  # Formatter interface
+│   ├── formatter.go  # Formatter interface
 │   └── bson/         # BSON output formatter
 └── bsonic.go         # Main API, orchestration, and factory functions
 ```

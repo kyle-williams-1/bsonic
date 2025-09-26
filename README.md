@@ -133,10 +133,10 @@ The library is organized into several packages for maximum modularity:
 bsonic/
 ├── config/           # Configuration types and defaults
 ├── language/         # Query language implementations
-│   ├── interface.go  # Language parser interface
+│   ├── parser.go     # Language parser interface
 │   └── lucene/       # Lucene-style query parser
 ├── formatter/        # Output formatter implementations
-│   ├── interface.go  # Formatter interface
+│   ├── formatter.go  # Formatter interface
 │   └── bson/         # BSON output formatter
 └── bsonic.go         # Main parser, public API, and factory functions
 ```
