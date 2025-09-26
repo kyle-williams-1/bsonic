@@ -9,823 +9,951 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-func TestNew(t *testing.T) {
-	parser := bsonic.New()
-	if parser == nil {
-		t.Fatal("New() should return a non-nil parser")
-	}
-}
+// TestBasicParsing tests basic parsing functionality including constructors, empty queries, and simple field-value pairs
+func TestBasicParsing(t *testing.T) {
+	// Test New() constructor
+	t.Run("New", func(t *testing.T) {
+		parser := bsonic.New()
+		if parser == nil {
+			t.Fatal("New() should return a non-nil parser")
+		}
+	})
 
-func TestParsePackageLevel(t *testing.T) {
-	// Test the new package-level Parse function
-	query, err := bsonic.Parse("name:john")
-	if err != nil {
-		t.Fatalf("Parse should not return error, got: %v", err)
-	}
+	// Test package-level Parse function
+	t.Run("PackageLevelParse", func(t *testing.T) {
+		query, err := bsonic.Parse("name:john")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
 
-	expected := bson.M{"name": "john"}
-	if !compareBSONValues(query, expected) {
-		t.Fatalf("Expected %+v, got %+v", expected, query)
-	}
-}
+		expected := bson.M{"name": "john"}
+		if !compareBSONValues(query, expected) {
+			t.Fatalf("Expected %+v, got %+v", expected, query)
+		}
+	})
 
-func TestParseEmptyQuery(t *testing.T) {
-	parser := bsonic.New()
-
-	query, err := parser.Parse("")
-	if err != nil {
-		t.Fatalf("Parse empty query should not return error, got: %v", err)
-	}
-
-	if len(query) != 0 {
-		t.Fatalf("Empty query should return empty BSON, got: %+v", query)
-	}
-}
-
-func TestParseWhitespaceQuery(t *testing.T) {
 	parser := bsonic.New()
 
-	query, err := parser.Parse("   ")
-	if err != nil {
-		t.Fatalf("Parse whitespace query should not return error, got: %v", err)
-	}
+	// Test empty and whitespace queries
+	t.Run("EmptyAndWhitespaceQueries", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			query string
+		}{
+			{"EmptyQuery", ""},
+			{"WhitespaceQuery", "   "},
+			{"TabWhitespace", "\t"},
+			{"NewlineWhitespace", "\n"},
+		}
 
-	if len(query) != 0 {
-		t.Fatalf("Whitespace query should return empty BSON, got: %+v", query)
-	}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				query, err := parser.Parse(test.query)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if len(query) != 0 {
+					t.Fatalf("Query should return empty BSON, got: %+v", query)
+				}
+			})
+		}
+	})
+
+	// Test simple field-value pairs
+	t.Run("SimpleFieldValuePairs", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{"name:john", bson.M{"name": "john"}, "string value"},
+			{"age:25", bson.M{"age": 25.0}, "numeric value"},
+			{"active:true", bson.M{"active": true}, "boolean true"},
+			{"active:false", bson.M{"active": false}, "boolean false"},
+			{"age:0", bson.M{"age": 0.0}, "zero numeric value"},
+			{"age:-1", bson.M{"age": -1.0}, "negative numeric value"},
+			{"age:3.14", bson.M{"age": 3.14}, "decimal numeric value"},
+			{`name:"john doe"`, bson.M{"name": "john doe"}, "quoted string value"},
+			{"user.profile.email:john@example.com", bson.M{"user.profile.email": "john@example.com"}, "dot notation field"},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test field value with spaces (special case)
+	t.Run("FieldValueWithSpaces", func(t *testing.T) {
+		query, err := parser.Parse("name:John Doe")
+		if err != nil {
+			t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
+		}
+
+		// Should be parsed as name:John (regex) AND $text:"Doe"
+		expected := bson.M{
+			"$and": []bson.M{
+				{"name": "John"},
+				{"$text": bson.M{"$search": "Doe"}},
+			},
+		}
+
+		if !compareBSONValues(query, expected) {
+			t.Fatalf("Expected %+v, got %+v", expected, query)
+		}
+	})
 }
 
-func TestParseSimpleFieldValue(t *testing.T) {
+// TestLogicalOperators tests AND, OR, and NOT operators with various combinations
+func TestLogicalOperators(t *testing.T) {
 	parser := bsonic.New()
 
-	tests := []struct {
-		input    string
-		expected bson.M
-	}{
-		{"name:john", bson.M{"name": "john"}},
-		{"age:25", bson.M{"age": 25.0}},
-		{"active:true", bson.M{"active": true}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.input, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseQuotedValue(t *testing.T) {
-	parser := bsonic.New()
-
-	query, err := parser.Parse(`name:"john doe"`)
-	if err != nil {
-		t.Fatalf("Parse quoted value should not return error, got: %v", err)
-	}
-
-	expected := bson.M{"name": "john doe"}
-
-	if !compareBSONValues(query, expected) {
-		t.Fatalf("Expected %+v, got %+v", expected, query)
-	}
-}
-
-func TestParseAndOperator(t *testing.T) {
-	parser := bsonic.New()
-
-	query, err := parser.Parse("name:john AND age:25")
-	if err != nil {
-		t.Fatalf("Parse AND query should not return error, got: %v", err)
-	}
-
-	expected := bson.M{"name": "john", "age": 25.0}
-
-	if !compareBSONValues(query, expected) {
-		t.Fatalf("Expected %+v, got %+v", expected, query)
-	}
-}
-
-func TestParseInvalidQuery(t *testing.T) {
-	parser := bsonic.New()
-
-	invalidQueries := []string{":value"}
-
-	for _, invalidQuery := range invalidQueries {
-		t.Run(invalidQuery, func(t *testing.T) {
-			_, err := parser.Parse(invalidQuery)
-			if err == nil {
-				t.Fatalf("Expected error for invalid query '%s', got none", invalidQuery)
-			}
-		})
-	}
-}
-
-func TestParseDotNotation(t *testing.T) {
-	parser := bsonic.New()
-
-	query, err := parser.Parse("user.profile.email:john@example.com")
-	if err != nil {
-		t.Fatalf("Parse dot notation should not return error, got: %v", err)
-	}
-
-	expected := bson.M{"user.profile.email": "john@example.com"}
-
-	if !compareBSONValues(query, expected) {
-		t.Fatalf("Expected %+v, got %+v", expected, query)
-	}
-}
-
-func TestParseOrOperator(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-	}{
-		{
-			input: "name:john OR name:jane",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": "john"},
-					{"name": "jane"},
-				},
+	// Test AND operator
+	t.Run("ANDOperator", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input:    "name:john AND age:25",
+				expected: bson.M{"name": "john", "age": 25.0},
+				desc:     "simple AND",
 			},
-		},
-		{
-			input: "age:25 OR age:30",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"age": 25.0},
-					{"age": 30.0},
-				},
+			{
+				input:    "status:active AND NOT role:guest",
+				expected: bson.M{"status": "active", "role": bson.M{"$ne": "guest"}},
+				desc:     "AND with NOT",
 			},
-		},
-		{
-			input: "status:active OR status:pending",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"status": "active"},
-					{"status": "pending"},
-				},
+			{
+				input:    "  name:john  AND  age:25  ",
+				expected: bson.M{"name": "john", "age": 25.0},
+				desc:     "AND with whitespace",
 			},
-		},
-	}
+		}
 
-	for _, test := range tests {
-		t.Run(test.input, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 
-func TestParseNotOperator(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-	}{
-		{
-			input: "name:john AND NOT age:25",
-			expected: bson.M{
-				"name": "john",
-				"age":  bson.M{"$ne": 25.0},
-			},
-		},
-		{
-			input: "NOT status:inactive",
-			expected: bson.M{
-				"status": bson.M{"$ne": "inactive"},
-			},
-		},
-		{
-			input: `name:"john doe" AND NOT role:admin`,
-			expected: bson.M{
-				"name": "john doe",
-				"role": bson.M{"$ne": "admin"},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.input, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseComplexOperators(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input       string
-		expected    bson.M
-		description string
-	}{
-		{
-			input:       "name:john OR name:jane AND age:25",
-			description: "OR with AND",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": "john"},
-					{"name": "jane", "age": 25.0},
-				},
-			},
-		},
-		{
-			input:       "status:active AND NOT role:guest",
-			description: "AND with NOT",
-			expected: bson.M{
-				"status": "active",
-				"role":   bson.M{"$ne": "guest"},
-			},
-		},
-		{
-			input:       "name:jo* OR name:ja* AND NOT age:18",
-			description: "Wildcard OR with AND and NOT",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-					{"name": bson.M{"$regex": "^ja.*", "$options": "i"}, "age": bson.M{"$ne": 18.0}},
-				},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.description, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseDateQueries(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "created_at:2023-01-15",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
-			},
-			desc: "exact date",
-		},
-		{
-			input: "created_at:2023-01-15T10:30:00Z",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
-			},
-			desc: "exact datetime with timezone",
-		},
-		{
-			input: "created_at:2023-01-15T10:30:00",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
-			},
-			desc: "datetime without timezone",
-		},
-		{
-			input: "created_at:2023-01-15 10:30:00",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
-			},
-			desc: "datetime with space separator",
-		},
-		{
-			input: "created_at:01/15/2023",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
-			},
-			desc: "US date format",
-		},
-		{
-			input: "created_at:2023/01/15",
-			expected: bson.M{
-				"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
-			},
-			desc: "ISO date format with slashes",
-		},
-		{
-			input: "created_at:[2023-01-01 TO 2023-12-31]",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date range",
-		},
-		{
-			input: "created_at:>2024-01-01",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date greater than",
-		},
-		{
-			input: "created_at:<2023-12-31",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$lt": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date less than",
-		},
-		{
-			input: "created_at:>=2024-01-01",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$gte": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date greater than or equal",
-		},
-		{
-			input: "created_at:<=2023-12-31",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date less than or equal",
-		},
-		{
-			input: "created_at:[2023-01-01 TO *]",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date range with wildcard end",
-		},
-		{
-			input: "created_at:[* TO 2023-12-31]",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			desc: "date range with wildcard start",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if len(result) != 1 {
-				t.Fatalf("Expected 1 field, got %d", len(result))
-			}
-
-			field := "created_at"
-			actualValue, exists := result[field]
-			if !exists {
-				t.Fatalf("Expected field %s not found", field)
-			}
-
-			if !compareBSONValues(actualValue, test.expected[field]) {
-				t.Fatalf("Expected %s=%v, got %s=%v", field, test.expected[field], field, actualValue)
-			}
-		})
-	}
-}
-
-func TestParseComplexDateQueries(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "created_at:[2023-01-01 TO 2023-12-31] AND status:active",
-			expected: bson.M{
-				"created_at": bson.M{
-					"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-					"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-				},
-				"status": "active",
-			},
-			desc: "date range with AND",
-		},
-		{
-			input: "created_at:>2024-01-01 OR updated_at:<2023-01-01",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"created_at": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-					{"updated_at": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
-				},
-			},
-			desc: "date comparisons with OR",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseNumberRangeQueries(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "age:[18 TO 65]",
-			expected: bson.M{
-				"age": bson.M{
-					"$gte": 18.0,
-					"$lte": 65.0,
-				},
-			},
-			desc: "number range",
-		},
-		{
-			input: "price:[10.50 TO 99.99]",
-			expected: bson.M{
-				"price": bson.M{
-					"$gte": 10.50,
-					"$lte": 99.99,
-				},
-			},
-			desc: "decimal number range",
-		},
-		{
-			input: "age:[18 TO *]",
-			expected: bson.M{
-				"age": bson.M{
-					"$gte": 18.0,
-				},
-			},
-			desc: "number range with wildcard end",
-		},
-		{
-			input: "age:[* TO 65]",
-			expected: bson.M{
-				"age": bson.M{
-					"$lte": 65.0,
-				},
-			},
-			desc: "number range with wildcard start",
-		},
-		{
-			input: "score:>85",
-			expected: bson.M{
-				"score": bson.M{
-					"$gt": 85.0,
-				},
-			},
-			desc: "number greater than",
-		},
-		{
-			input: "score:<60",
-			expected: bson.M{
-				"score": bson.M{
-					"$lt": 60.0,
-				},
-			},
-			desc: "number less than",
-		},
-		{
-			input: "score:>=90",
-			expected: bson.M{
-				"score": bson.M{
-					"$gte": 90.0,
-				},
-			},
-			desc: "number greater than or equal",
-		},
-		{
-			input: "score:<=50",
-			expected: bson.M{
-				"score": bson.M{
-					"$lte": 50.0,
-				},
-			},
-			desc: "number less than or equal",
-		},
-		{
-			input: "age:[18 TO 65] AND status:active",
-			expected: bson.M{
-				"age": bson.M{
-					"$gte": 18.0,
-					"$lte": 65.0,
-				},
-				"status": "active",
-			},
-			desc: "number range with AND",
-		},
-		{
-			input: "age:>18 OR score:<60",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"age": bson.M{"$gt": 18.0}},
-					{"score": bson.M{"$lt": 60.0}},
-				},
-			},
-			desc: "number comparisons with OR",
-		},
-		{
-			input: "age:[18 TO 65] OR score:[80 TO 100]",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
-					{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
-				},
-			},
-			desc: "number ranges with OR",
-		},
-		{
-			input: "(age:[18 TO 65] OR score:[80 TO 100]) AND status:active",
-			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
-							{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
-						},
+	// Test OR operator
+	t.Run("OROperator", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "name:john OR name:jane",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john"},
+						{"name": "jane"},
 					},
-					{"status": "active"},
+				},
+				desc: "simple OR",
+			},
+			{
+				input: "age:25 OR age:30",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"age": 25.0},
+						{"age": 30.0},
+					},
+				},
+				desc: "numeric OR",
+			},
+			{
+				input: "status:active OR status:pending",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"status": "active"},
+						{"status": "pending"},
+					},
+				},
+				desc: "status OR",
+			},
+			{
+				input: "  name:john  OR  age:25  ",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john"},
+						{"age": 25.0},
+					},
+				},
+				desc: "OR with whitespace",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test NOT operator
+	t.Run("NOTOperator", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input:    "name:john AND NOT age:25",
+				expected: bson.M{"name": "john", "age": bson.M{"$ne": 25.0}},
+				desc:     "AND with NOT",
+			},
+			{
+				input:    "NOT status:inactive",
+				expected: bson.M{"status": bson.M{"$ne": "inactive"}},
+				desc:     "simple NOT",
+			},
+			{
+				input:    `name:"john doe" AND NOT role:admin`,
+				expected: bson.M{"name": "john doe", "role": bson.M{"$ne": "admin"}},
+				desc:     "quoted value with NOT",
+			},
+			{
+				input:    "  NOT  name:john  ",
+				expected: bson.M{"name": bson.M{"$ne": "john"}},
+				desc:     "NOT with whitespace",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test complex operator combinations
+	t.Run("ComplexOperatorCombinations", func(t *testing.T) {
+		tests := []struct {
+			input       string
+			expected    bson.M
+			description string
+		}{
+			{
+				input:       "name:john OR name:jane AND age:25",
+				description: "OR with AND",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john"},
+						{"name": "jane", "age": 25.0},
+					},
 				},
 			},
-			desc: "number ranges with grouped status",
-		},
-	}
+			{
+				input:       "name:jo* OR name:ja* AND NOT age:18",
+				description: "Wildcard OR with AND and NOT",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
+						{"name": bson.M{"$regex": "^ja.*", "$options": "i"}, "age": bson.M{"$ne": 18.0}},
+					},
+				},
+			},
+		}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.description, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 }
 
-func TestParseParenthesesQueries(t *testing.T) {
+// TestDateParsing tests date parsing functionality including various formats and range queries
+func TestDateParsing(t *testing.T) {
 	parser := bsonic.New()
 
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "(name:john OR name:jane) AND age:25",
-			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"name": "john"},
-							{"name": "jane"},
-						},
+	// Test basic date formats
+	t.Run("BasicDateFormats", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "created_at:2023-01-15",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
+				},
+				desc: "exact date",
+			},
+			{
+				input: "created_at:2023-01-15T10:30:00Z",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
+				},
+				desc: "exact datetime with timezone",
+			},
+			{
+				input: "created_at:2023-01-15T10:30:00",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
+				},
+				desc: "datetime without timezone",
+			},
+			{
+				input: "created_at:2023-01-15 10:30:00",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC),
+				},
+				desc: "datetime with space separator",
+			},
+			{
+				input: "created_at:01/15/2023",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
+				},
+				desc: "US date format",
+			},
+			{
+				input: "created_at:2023/01/15",
+				expected: bson.M{
+					"created_at": time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC),
+				},
+				desc: "ISO date format with slashes",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if len(result) != 1 {
+					t.Fatalf("Expected 1 field, got %d", len(result))
+				}
+
+				field := "created_at"
+				actualValue, exists := result[field]
+				if !exists {
+					t.Fatalf("Expected field %s not found", field)
+				}
+
+				if !compareBSONValues(actualValue, test.expected[field]) {
+					t.Fatalf("Expected %s=%v, got %s=%v", field, test.expected[field], field, actualValue)
+				}
+			})
+		}
+	})
+
+	// Test date range queries
+	t.Run("DateRangeQueries", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "created_at:[2023-01-01 TO 2023-12-31]",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+						"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
 					},
-					{"age": 25.0},
 				},
+				desc: "date range",
 			},
-			desc: "grouped OR with AND",
-		},
-		{
-			input: "name:john OR (name:jane AND age:25)",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": "john"},
-					{"name": "jane", "age": 25.0},
+			{
+				input: "created_at:[2023-01-01 TO *]",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+					},
 				},
+				desc: "date range with wildcard end",
 			},
-			desc: "OR with grouped AND",
-		},
-		{
-			input: "(name:john AND age:25) OR (name:jane AND age:30)",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": "john", "age": 25.0},
-					{"name": "jane", "age": 30.0},
+			{
+				input: "created_at:[* TO 2023-12-31]",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+					},
 				},
+				desc: "date range with wildcard start",
 			},
-			desc: "grouped AND expressions with OR",
-		},
-		{
-			input: "NOT (name:john OR name:jane)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{"name": bson.M{"$ne": "john"}},
-					{"name": bson.M{"$ne": "jane"}},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test date comparison operators
+	t.Run("DateComparisonOperators", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "created_at:>2024-01-01",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					},
 				},
+				desc: "date greater than",
 			},
-			desc: "NOT with grouped OR",
-		},
-		{
-			input: "((name:john OR name:jane) AND age:25) OR status:active",
-			expected: bson.M{
-				"$or": []bson.M{
-					{
-						"$and": []bson.M{
-							{
-								"$or": []bson.M{
-									{"name": "john"},
-									{"name": "jane"},
-								},
+			{
+				input: "created_at:<2023-12-31",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$lt": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+					},
+				},
+				desc: "date less than",
+			},
+			{
+				input: "created_at:>=2024-01-01",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$gte": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					},
+				},
+				desc: "date greater than or equal",
+			},
+			{
+				input: "created_at:<=2023-12-31",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+					},
+				},
+				desc: "date less than or equal",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test complex date queries with logical operators
+	t.Run("ComplexDateQueries", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "created_at:[2023-01-01 TO 2023-12-31] AND status:active",
+				expected: bson.M{
+					"created_at": bson.M{
+						"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+						"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+					},
+					"status": "active",
+				},
+				desc: "date range with AND",
+			},
+			{
+				input: "created_at:>2024-01-01 OR updated_at:<2023-01-01",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"created_at": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+						{"updated_at": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					},
+				},
+				desc: "date comparisons with OR",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+}
+
+// TestNumberRangeAndComparison tests number range queries and comparison operators
+func TestNumberRangeAndComparison(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test number range queries
+	t.Run("NumberRangeQueries", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "age:[18 TO 65]",
+				expected: bson.M{
+					"age": bson.M{
+						"$gte": 18.0,
+						"$lte": 65.0,
+					},
+				},
+				desc: "integer range",
+			},
+			{
+				input: "price:[10.50 TO 99.99]",
+				expected: bson.M{
+					"price": bson.M{
+						"$gte": 10.50,
+						"$lte": 99.99,
+					},
+				},
+				desc: "decimal range",
+			},
+			{
+				input: "age:[18 TO *]",
+				expected: bson.M{
+					"age": bson.M{
+						"$gte": 18.0,
+					},
+				},
+				desc: "range with wildcard end",
+			},
+			{
+				input: "age:[* TO 65]",
+				expected: bson.M{
+					"age": bson.M{
+						"$lte": 65.0,
+					},
+				},
+				desc: "range with wildcard start",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test number comparison operators
+	t.Run("NumberComparisonOperators", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "score:>85",
+				expected: bson.M{
+					"score": bson.M{
+						"$gt": 85.0,
+					},
+				},
+				desc: "greater than",
+			},
+			{
+				input: "score:<60",
+				expected: bson.M{
+					"score": bson.M{
+						"$lt": 60.0,
+					},
+				},
+				desc: "less than",
+			},
+			{
+				input: "score:>=90",
+				expected: bson.M{
+					"score": bson.M{
+						"$gte": 90.0,
+					},
+				},
+				desc: "greater than or equal",
+			},
+			{
+				input: "score:<=50",
+				expected: bson.M{
+					"score": bson.M{
+						"$lte": 50.0,
+					},
+				},
+				desc: "less than or equal",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test complex number queries with logical operators
+	t.Run("ComplexNumberQueries", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "age:[18 TO 65] AND status:active",
+				expected: bson.M{
+					"age": bson.M{
+						"$gte": 18.0,
+						"$lte": 65.0,
+					},
+					"status": "active",
+				},
+				desc: "range with AND",
+			},
+			{
+				input: "age:>18 OR score:<60",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"age": bson.M{"$gt": 18.0}},
+						{"score": bson.M{"$lt": 60.0}},
+					},
+				},
+				desc: "comparisons with OR",
+			},
+			{
+				input: "age:[18 TO 65] OR score:[80 TO 100]",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
+						{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
+					},
+				},
+				desc: "ranges with OR",
+			},
+			{
+				input: "(age:[18 TO 65] OR score:[80 TO 100]) AND status:active",
+				expected: bson.M{
+					"$and": []bson.M{
+						{
+							"$or": []bson.M{
+								{"age": bson.M{"$gte": 18.0, "$lte": 65.0}},
+								{"score": bson.M{"$gte": 80.0, "$lte": 100.0}},
 							},
-							{"age": 25.0},
 						},
-					},
-					{"status": "active"},
-				},
-			},
-			desc: "nested parentheses",
-		},
-		{
-			input: "(name:jo* OR name:ja*) AND (age:25 OR age:30)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-							{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
-						},
-					},
-					{
-						"$or": []bson.M{
-							{"age": 25.0},
-							{"age": 30.0},
-						},
+						{"status": "active"},
 					},
 				},
+				desc: "grouped ranges with status",
 			},
-			desc: "grouped wildcards and numbers",
-		},
-		{
-			input: "created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"status": "active"},
-							{"status": "pending"},
-						},
-					},
-					{
-						"created_at": bson.M{
-							"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-							"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-						},
-					},
-				},
-			},
-			desc: "date range with grouped status",
-		},
-	}
+		}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 }
 
-func TestParseInvalidParenthesesQueries(t *testing.T) {
+// TestParenthesesAndGrouping tests parentheses grouping and complex nested expressions
+func TestParenthesesAndGrouping(t *testing.T) {
 	parser := bsonic.New()
 
-	invalidQueries := []string{
-		"(name:john OR name:jane",      // unmatched opening parenthesis
-		"name:john OR name:jane)",      // unmatched closing parenthesis
-		"((name:john OR name:jane)",    // unmatched nested parentheses
-		"name:john OR name:jane))",     // extra closing parenthesis
-		"()",                           // empty parentheses
-		"(name:john AND)",              // incomplete expression in parentheses
-		"AND (name:john OR name:jane)", // AND at start
-		"(name:john OR name:jane) AND", // AND at end
-	}
+	// Test basic parentheses grouping
+	t.Run("BasicParenthesesGrouping", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "(name:john OR name:jane) AND age:25",
+				expected: bson.M{
+					"$and": []bson.M{
+						{
+							"$or": []bson.M{
+								{"name": "john"},
+								{"name": "jane"},
+							},
+						},
+						{"age": 25.0},
+					},
+				},
+				desc: "grouped OR with AND",
+			},
+			{
+				input: "name:john OR (name:jane AND age:25)",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john"},
+						{"name": "jane", "age": 25.0},
+					},
+				},
+				desc: "OR with grouped AND",
+			},
+			{
+				input: "(name:john AND age:25) OR (name:jane AND age:30)",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john", "age": 25.0},
+						{"name": "jane", "age": 30.0},
+					},
+				},
+				desc: "grouped AND expressions with OR",
+			},
+		}
 
-	for _, invalidQuery := range invalidQueries {
-		t.Run(invalidQuery, func(t *testing.T) {
-			_, err := parser.Parse(invalidQuery)
-			if err == nil {
-				t.Fatalf("Expected error for invalid parentheses query '%s', got none", invalidQuery)
-			}
-		})
-	}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test NOT with parentheses
+	t.Run("NOTWithParentheses", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "NOT (name:john OR name:jane)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{"name": bson.M{"$ne": "john"}},
+						{"name": bson.M{"$ne": "jane"}},
+					},
+				},
+				desc: "NOT with grouped OR",
+			},
+			{
+				input: "NOT (name:john AND age:25)",
+				expected: bson.M{
+					"name": bson.M{"$ne": "john"},
+					"age":  bson.M{"$ne": 25.0},
+				},
+				desc: "NOT with grouped AND",
+			},
+			{
+				input: "NOT (status:active AND role:admin AND age:30)",
+				expected: bson.M{
+					"status": bson.M{"$ne": "active"},
+					"role":   bson.M{"$ne": "admin"},
+					"age":    bson.M{"$ne": 30.0},
+				},
+				desc: "NOT with multiple AND conditions",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test nested parentheses
+	t.Run("NestedParentheses", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "((name:john OR name:jane) AND age:25) OR status:active",
+				expected: bson.M{
+					"$or": []bson.M{
+						{
+							"$and": []bson.M{
+								{
+									"$or": []bson.M{
+										{"name": "john"},
+										{"name": "jane"},
+									},
+								},
+								{"age": 25.0},
+							},
+						},
+						{"status": "active"},
+					},
+				},
+				desc: "nested parentheses",
+			},
+			{
+				input: "(name:jo* OR name:ja*) AND (age:25 OR age:30)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{
+							"$or": []bson.M{
+								{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
+								{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
+							},
+						},
+						{
+							"$or": []bson.M{
+								{"age": 25.0},
+								{"age": 30.0},
+							},
+						},
+					},
+				},
+				desc: "grouped wildcards and numbers",
+			},
+			{
+				input: "created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{
+							"$or": []bson.M{
+								{"status": "active"},
+								{"status": "pending"},
+							},
+						},
+						{
+							"created_at": bson.M{
+								"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+								"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+							},
+						},
+					},
+				},
+				desc: "date range with grouped status",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test invalid parentheses
+	t.Run("InvalidParentheses", func(t *testing.T) {
+		invalidQueries := []string{
+			"(name:john OR name:jane",      // unmatched opening parenthesis
+			"name:john OR name:jane)",      // unmatched closing parenthesis
+			"((name:john OR name:jane)",    // unmatched nested parentheses
+			"name:john OR name:jane))",     // extra closing parenthesis
+			"()",                           // empty parentheses
+			"(name:john AND)",              // incomplete expression in parentheses
+			"AND (name:john OR name:jane)", // AND at start
+			"(name:john OR name:jane) AND", // AND at end
+		}
+
+		for _, invalidQuery := range invalidQueries {
+			t.Run(invalidQuery, func(t *testing.T) {
+				_, err := parser.Parse(invalidQuery)
+				if err == nil {
+					t.Fatalf("Expected error for invalid parentheses query '%s', got none", invalidQuery)
+				}
+			})
+		}
+	})
 }
 
-func TestParseNotWithAndExpressions(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "NOT (name:john AND age:25)",
-			expected: bson.M{
-				"name": bson.M{"$ne": "john"},
-				"age":  bson.M{"$ne": 25.0},
-			},
-			desc: "NOT with grouped AND",
-		},
-		{
-			input: "NOT (status:active AND role:admin AND age:30)",
-			expected: bson.M{
-				"status": bson.M{"$ne": "active"},
-				"role":   bson.M{"$ne": "admin"},
-				"age":    bson.M{"$ne": 30.0},
-			},
-			desc: "NOT with multiple AND conditions",
-		},
-		{
-			input: "NOT (name:jo* AND age:25)",
-			expected: bson.M{
-				"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
-				"age":  bson.M{"$ne": 25.0},
-			},
-			desc: "NOT with wildcard AND condition",
-		},
-		{
-			input: "NOT (created_at:>2024-01-01 AND status:active)",
-			expected: bson.M{
-				"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-				"status":     bson.M{"$ne": "active"},
-			},
-			desc: "NOT with date comparison AND condition",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseWildcardPatterns(t *testing.T) {
+// TestWildcardPatterns tests wildcard pattern matching
+func TestWildcardPatterns(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -899,7 +1027,8 @@ func TestParseWildcardPatterns(t *testing.T) {
 	}
 }
 
-func TestParseWhitespaceHandling(t *testing.T) {
+// TestWhitespaceHandling tests whitespace handling in queries
+func TestWhitespaceHandling(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -958,280 +1087,230 @@ func TestParseWhitespaceHandling(t *testing.T) {
 	}
 }
 
-func TestParseFieldValueWithSpaces(t *testing.T) {
+// TestErrorConditions tests various error conditions and edge cases
+func TestErrorConditions(t *testing.T) {
 	parser := bsonic.New()
 
-	query, err := parser.Parse("name:John Doe")
-	if err != nil {
-		t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
-	}
+	// Test invalid query syntax
+	t.Run("InvalidQuerySyntax", func(t *testing.T) {
+		invalidQueries := []struct {
+			input string
+			desc  string
+		}{
+			{":value", "empty field name"},
+			{"name:john AND", "AND at end without right operand"},
+			{"name:john OR", "OR at end without right operand"},
+			{"NOT", "NOT without operand"},
+			{"name:john AND NOT", "NOT at end without operand"},
+			{"name:", "empty value"},
+		}
 
-	// Debug output
-	t.Logf("Generated query: %+v", query)
-
-	// Should be parsed as name:John (regex) AND $text:"Doe"
-	expected := bson.M{
-		"$and": []bson.M{
-			{"name": "John"},
-			{"$text": bson.M{"$search": "Doe"}},
-		},
-	}
-
-	if !compareBSONValues(query, expected) {
-		t.Fatalf("Expected %+v, got %+v", expected, query)
-	}
-}
-
-func TestParseEdgeCases(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input:    "name:false",
-			expected: bson.M{"name": false},
-			desc:     "boolean false value",
-		},
-		{
-			input:    "name:true",
-			expected: bson.M{"name": true},
-			desc:     "boolean true value",
-		},
-		{
-			input:    "age:0",
-			expected: bson.M{"age": 0.0},
-			desc:     "zero numeric value",
-		},
-		{
-			input:    "age:-1",
-			expected: bson.M{"age": -1.0},
-			desc:     "negative numeric value",
-		},
-		{
-			input:    "age:3.14",
-			expected: bson.M{"age": 3.14},
-			desc:     "decimal numeric value",
-		},
-		{
-			input:    "name:",
-			expected: bson.M{},
-			desc:     "empty value should error",
-		},
-		{
-			input:    ":value",
-			expected: bson.M{},
-			desc:     "empty field should error",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if test.desc == "empty value should error" || test.desc == "empty field should error" {
+		for _, test := range invalidQueries {
+			t.Run(test.desc, func(t *testing.T) {
+				_, err := parser.Parse(test.input)
 				if err == nil {
 					t.Fatalf("Expected error for '%s', got none", test.input)
 				}
-				return
-			}
+			})
+		}
+	})
 
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+	// Test edge cases that should work
+	t.Run("ValidEdgeCases", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input:    "name:false",
+				expected: bson.M{"name": false},
+				desc:     "boolean false value",
+			},
+			{
+				input:    "name:true",
+				expected: bson.M{"name": true},
+				desc:     "boolean true value",
+			},
+			{
+				input:    "age:0",
+				expected: bson.M{"age": 0.0},
+				desc:     "zero numeric value",
+			},
+			{
+				input:    "age:-1",
+				expected: bson.M{"age": -1.0},
+				desc:     "negative numeric value",
+			},
+			{
+				input:    "age:3.14",
+				expected: bson.M{"age": 3.14},
+				desc:     "decimal numeric value",
+			},
+		}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-func TestParseErrorConditions(t *testing.T) {
-	parser := bsonic.New()
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 
-	errorTests := []struct {
-		input string
-		desc  string
-	}{
-		{
-			input: "name:john AND",
-			desc:  "AND at end without right operand",
-		},
-		{
-			input: "name:john OR",
-			desc:  "OR at end without right operand",
-		},
-		{
-			input: "NOT",
-			desc:  "NOT without operand",
-		},
-		{
-			input: "name:john AND NOT",
-			desc:  "NOT at end without operand",
-		},
-	}
-
-	for _, test := range errorTests {
-		t.Run(test.desc, func(t *testing.T) {
-			_, err := parser.Parse(test.input)
-			if err == nil {
-				t.Fatalf("Expected error for '%s', got none", test.input)
-			}
-		})
-	}
-}
-
-func TestParseComplexNestedQueries(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "((name:john OR name:jane) AND (age:25 OR age:30)) OR status:active",
-			expected: bson.M{
-				"$or": []bson.M{
-					{
-						"$and": []bson.M{
-							{
-								"$or": []bson.M{
+	// Test complex nested queries
+	t.Run("ComplexNestedQueries", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "((name:john OR name:jane) AND (age:25 OR age:30)) OR status:active",
+				expected: bson.M{
+					"$or": []bson.M{
+						{
+							"$and": []bson.M{
+								{
+									"$or": []bson.M{
+										{"name": "john"},
+										{"name": "jane"},
+									},
+								},
+								{
+									"$or": []bson.M{
+										{"age": 25.0},
+										{"age": 30.0},
+									},
+								},
+							},
+						},
+						{"status": "active"},
+					},
+				},
+				desc: "complex nested parentheses",
+			},
+			{
+				input: "NOT ((name:john OR name:jane) AND age:25)",
+				expected: bson.M{
+					"$or": []bson.M{
+						{
+							"$or": bson.M{
+								"$ne": []bson.M{
 									{"name": "john"},
 									{"name": "jane"},
 								},
 							},
-							{
-								"$or": []bson.M{
-									{"age": 25.0},
-									{"age": 30.0},
-								},
+						},
+						{"age": bson.M{"$ne": 25.0}},
+					},
+				},
+				desc: "NOT with complex nested expression",
+			},
+			{
+				input: "(name:jo* OR name:ja*) AND (age:18 AND age:65)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{
+							"$or": []bson.M{
+								{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
+								{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
+							},
+						},
+						{
+							"$and": []bson.M{
+								{"age": 65.0},
+								{"age": 18.0},
 							},
 						},
 					},
-					{"status": "active"},
 				},
+				desc: "wildcards with numeric values",
 			},
-			desc: "complex nested parentheses",
-		},
-		{
-			input: "NOT ((name:john OR name:jane) AND age:25)",
-			expected: bson.M{
-				"$or": []bson.M{
-					{
-						"$or": bson.M{
-							"$ne": []bson.M{
-								{"name": "john"},
-								{"name": "jane"},
-							},
-						},
-					},
-					{"age": bson.M{"$ne": 25.0}},
-				},
-			},
-			desc: "NOT with complex nested expression",
-		},
-		{
-			input: "(name:jo* OR name:ja*) AND (age:18 AND age:65)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{
-						"$or": []bson.M{
-							{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-							{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
-						},
-					},
-					{
-						"$and": []bson.M{
-							{"age": 65.0},
-							{"age": 18.0},
-						},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test NOT with OR expressions
+	t.Run("NOTWithORExpressions", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "NOT (name:john OR name:jane)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{"name": bson.M{"$ne": "john"}},
+						{"name": bson.M{"$ne": "jane"}},
 					},
 				},
+				desc: "NOT with grouped OR",
 			},
-			desc: "wildcards with numeric values",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseNotWithOrExpressions(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "NOT (name:john OR name:jane)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{"name": bson.M{"$ne": "john"}},
-					{"name": bson.M{"$ne": "jane"}},
+			{
+				input: "NOT (status:active OR status:pending OR status:inactive)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{"status": bson.M{"$ne": "active"}},
+						{"status": bson.M{"$ne": "pending"}},
+						{"status": bson.M{"$ne": "inactive"}},
+					},
 				},
+				desc: "NOT with multiple OR conditions",
 			},
-			desc: "NOT with grouped OR",
-		},
-		{
-			input: "NOT (status:active OR status:pending OR status:inactive)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{"status": bson.M{"$ne": "active"}},
-					{"status": bson.M{"$ne": "pending"}},
-					{"status": bson.M{"$ne": "inactive"}},
+			{
+				input: "NOT (name:jo* OR name:ja*)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}}},
+						{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*", "$options": "i"}}},
+					},
 				},
+				desc: "NOT with wildcard OR conditions",
 			},
-			desc: "NOT with multiple OR conditions",
-		},
-		{
-			input: "NOT (name:jo* OR name:ja*)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}}},
-					{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*", "$options": "i"}}},
+			{
+				input: "NOT (created_at:>2024-01-01 OR updated_at:<2023-01-01)",
+				expected: bson.M{
+					"$and": []bson.M{
+						{"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+						{"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+					},
 				},
+				desc: "NOT with date comparison OR conditions",
 			},
-			desc: "NOT with wildcard OR conditions",
-		},
-		{
-			input: "NOT (created_at:>2024-01-01 OR updated_at:<2023-01-01)",
-			expected: bson.M{
-				"$and": []bson.M{
-					{"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
-					{"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
-				},
-			},
-			desc: "NOT with date comparison OR conditions",
-		},
-	}
+		}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 }
 
 func compareBSONValues(actual, expected interface{}) bool {
@@ -1563,103 +1642,106 @@ func TestComplexQueryEdgeCases(t *testing.T) {
 	}
 }
 
-// TestNewWithConfig tests the NewWithConfig function
-func TestNewWithConfig(t *testing.T) {
-	// Test with valid config
-	cfg := &config.Config{
-		Language:  config.LanguageLucene,
-		Formatter: config.FormatterBSON,
-	}
+// TestConfigurationAndFactory tests configuration and factory functions
+func TestConfigurationAndFactory(t *testing.T) {
+	// Test NewWithConfig
+	t.Run("NewWithConfig", func(t *testing.T) {
+		// Test with valid config
+		cfg := &config.Config{
+			Language:  config.LanguageLucene,
+			Formatter: config.FormatterBSON,
+		}
 
-	parser, err := bsonic.NewWithConfig(cfg)
-	if err != nil {
-		t.Fatalf("NewWithConfig should not return error, got: %v", err)
-	}
-	if parser == nil {
-		t.Fatal("NewWithConfig should return a non-nil parser")
-	}
+		parser, err := bsonic.NewWithConfig(cfg)
+		if err != nil {
+			t.Fatalf("NewWithConfig should not return error, got: %v", err)
+		}
+		if parser == nil {
+			t.Fatal("NewWithConfig should return a non-nil parser")
+		}
 
-	// Test with invalid language
-	invalidCfg := &config.Config{
-		Language:  "invalid",
-		Formatter: config.FormatterBSON,
-	}
+		// Test with invalid language
+		invalidCfg := &config.Config{
+			Language:  "invalid",
+			Formatter: config.FormatterBSON,
+		}
 
-	_, err = bsonic.NewWithConfig(invalidCfg)
-	if err == nil {
-		t.Fatal("NewWithConfig should return error for invalid language")
-	}
+		_, err = bsonic.NewWithConfig(invalidCfg)
+		if err == nil {
+			t.Fatal("NewWithConfig should return error for invalid language")
+		}
 
-	// Test with invalid formatter
-	invalidCfg2 := &config.Config{
-		Language:  config.LanguageLucene,
-		Formatter: "invalid",
-	}
+		// Test with invalid formatter
+		invalidCfg2 := &config.Config{
+			Language:  config.LanguageLucene,
+			Formatter: "invalid",
+		}
 
-	_, err = bsonic.NewWithConfig(invalidCfg2)
-	if err == nil {
-		t.Fatal("NewWithConfig should return error for invalid formatter")
-	}
-}
+		_, err = bsonic.NewWithConfig(invalidCfg2)
+		if err == nil {
+			t.Fatal("NewWithConfig should return error for invalid formatter")
+		}
+	})
 
-// TestConfigFunctions tests config package functions
-func TestConfigFunctions(t *testing.T) {
-	// Test Default config
-	cfg := config.Default()
-	if cfg == nil {
-		t.Fatal("Default() should return a non-nil config")
-	}
+	// Test config package functions
+	t.Run("ConfigFunctions", func(t *testing.T) {
+		// Test Default config
+		cfg := config.Default()
+		if cfg == nil {
+			t.Fatal("Default() should return a non-nil config")
+		}
 
-	// Test WithLanguage
-	cfgWithLang := cfg.WithLanguage(config.LanguageLucene)
-	if cfgWithLang.Language != config.LanguageLucene {
-		t.Error("WithLanguage should set the language")
-	}
+		// Test WithLanguage
+		cfgWithLang := cfg.WithLanguage(config.LanguageLucene)
+		if cfgWithLang.Language != config.LanguageLucene {
+			t.Error("WithLanguage should set the language")
+		}
 
-	// Test WithFormatter
-	cfgWithFmt := cfg.WithFormatter(config.FormatterBSON)
-	if cfgWithFmt.Formatter != config.FormatterBSON {
-		t.Error("WithFormatter should set the formatter")
-	}
-}
+		// Test WithFormatter
+		cfgWithFmt := cfg.WithFormatter(config.FormatterBSON)
+		if cfgWithFmt.Formatter != config.FormatterBSON {
+			t.Error("WithFormatter should set the formatter")
+		}
+	})
 
-// TestFactoryFunctions tests factory package functions
-func TestFactoryFunctions(t *testing.T) {
-	// Test NewParser
-	parser, err := bsonic.NewParser(config.LanguageLucene)
-	if err != nil {
-		t.Fatalf("NewParser should not return error, got: %v", err)
-	}
-	if parser == nil {
-		t.Fatal("NewParser should return a non-nil parser")
-	}
+	// Test factory functions
+	t.Run("FactoryFunctions", func(t *testing.T) {
+		// Test NewParser
+		parser, err := bsonic.NewParser(config.LanguageLucene)
+		if err != nil {
+			t.Fatalf("NewParser should not return error, got: %v", err)
+		}
+		if parser == nil {
+			t.Fatal("NewParser should return a non-nil parser")
+		}
 
-	// Test NewParser with invalid language
-	_, err = bsonic.NewParser("invalid")
-	if err == nil {
-		t.Fatal("NewParser should return error for invalid language")
-	}
+		// Test NewParser with invalid language
+		_, err = bsonic.NewParser("invalid")
+		if err == nil {
+			t.Fatal("NewParser should return error for invalid language")
+		}
 
-	// Test NewFormatter
-	formatter, err := bsonic.NewFormatter(config.FormatterBSON)
-	if err != nil {
-		t.Fatalf("NewFormatter should not return error, got: %v", err)
-	}
-	if formatter == nil {
-		t.Fatal("NewFormatter should return a non-nil formatter")
-	}
+		// Test NewFormatter
+		formatter, err := bsonic.NewFormatter(config.FormatterBSON)
+		if err != nil {
+			t.Fatalf("NewFormatter should not return error, got: %v", err)
+		}
+		if formatter == nil {
+			t.Fatal("NewFormatter should return a non-nil formatter")
+		}
 
-	// Test NewFormatter with invalid formatter
-	_, err = bsonic.NewFormatter("invalid")
-	if err == nil {
-		t.Fatal("NewFormatter should return error for invalid formatter")
-	}
+		// Test NewFormatter with invalid formatter
+		_, err = bsonic.NewFormatter("invalid")
+		if err == nil {
+			t.Fatal("NewFormatter should return error for invalid formatter")
+		}
 
-	// Test NewBSONFormatter
-	bsonFormatter := bsonic.NewBSONFormatter()
-	if bsonFormatter == nil {
-		t.Fatal("NewBSONFormatter should return a non-nil formatter")
-	}
+		// Test NewBSONFormatter
+		bsonFormatter := bsonic.NewBSONFormatter()
+		if bsonFormatter == nil {
+			t.Fatal("NewBSONFormatter should return a non-nil formatter")
+		}
+	})
 }
 
 func TestParseFreeTextSearch(t *testing.T) {
