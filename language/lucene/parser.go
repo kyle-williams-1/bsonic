@@ -42,6 +42,32 @@ type ParticipleFieldValue struct {
 	Value *ParticipleValue `@@`
 }
 
+// SplitIntoFieldAndText splits a field value into field:value and free text if the value contains multiple text terms
+// Returns the field value (with single term) and optional free text, or nil if no splitting is needed
+func (fv *ParticipleFieldValue) SplitIntoFieldAndText() (*ParticipleFieldValue, *ParticipleFreeText) {
+	// Only split if we have multiple text terms
+	if fv.Value == nil || len(fv.Value.TextTerms) <= 1 {
+		return nil, nil
+	}
+
+	// Create new field value with just the first term
+	fieldValue := &ParticipleFieldValue{
+		Field: fv.Field,
+		Value: &ParticipleValue{
+			TextTerms: []string{fv.Value.TextTerms[0]},
+		},
+	}
+
+	// Create free text with remaining terms
+	freeText := &ParticipleFreeText{
+		UnquotedValue: &ParticipleUnquotedValue{
+			TextTerms: fv.Value.TextTerms[1:],
+		},
+	}
+
+	return fieldValue, freeText
+}
+
 // ParticipleFreeText represents free text search queries (quoted or unquoted text without field names)
 type ParticipleFreeText struct {
 	QuotedValue   *ParticipleQuotedValue   `@@`

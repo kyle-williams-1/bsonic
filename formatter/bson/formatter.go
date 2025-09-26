@@ -447,19 +447,24 @@ func (f *Formatter) buildAndResult(directFields bson.M, conditions []bson.M) bso
 
 // notExpressionToBSON converts a ParticipleNotExpression to BSON
 func (f *Formatter) notExpressionToBSON(notExpr *lucene.ParticipleNotExpression) bson.M {
+	return f.notExpressionToBSONWithContext(notExpr, false)
+}
+
+// notExpressionToBSONWithContext converts a ParticipleNotExpression to BSON with context
+func (f *Formatter) notExpressionToBSONWithContext(notExpr *lucene.ParticipleNotExpression, inNotContext bool) bson.M {
 	if notExpr.Not != nil {
 		// Handle NOT operation
-		childBSON := f.notExpressionToBSON(notExpr.Not)
+		childBSON := f.notExpressionToBSONWithContext(notExpr.Not, true)
 		return f.negateBSON(childBSON)
 	}
 
-	return f.termToBSON(notExpr.Term)
+	return f.termToBSONWithContext(notExpr.Term, inNotContext)
 }
 
-// termToBSON converts a ParticipleTerm to BSON
-func (f *Formatter) termToBSON(term *lucene.ParticipleTerm) bson.M {
+// termToBSONWithContext converts a ParticipleTerm to BSON with context
+func (f *Formatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNotContext bool) bson.M {
 	if term.FieldValue != nil {
-		return f.fieldValueToBSON(term.FieldValue)
+		return f.fieldValueToBSONWithContext(term.FieldValue, inNotContext)
 	}
 
 	if term.FreeText != nil {
@@ -473,8 +478,26 @@ func (f *Formatter) termToBSON(term *lucene.ParticipleTerm) bson.M {
 	return bson.M{}
 }
 
-// fieldValueToBSON converts a ParticipleFieldValue to BSON
-func (f *Formatter) fieldValueToBSON(fv *lucene.ParticipleFieldValue) bson.M {
+// fieldValueToBSONWithContext converts a ParticipleFieldValue to BSON with context
+func (f *Formatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, inNotContext bool) bson.M {
+	// Check if this field value should be split into field:value + free text
+	if fieldValue, freeText := fv.SplitIntoFieldAndText(); fieldValue != nil {
+		// Convert field value to BSON
+		fieldBSON := f.fieldValueToBSONWithContext(fieldValue, inNotContext)
+
+		// Convert free text to BSON
+		freeTextBSON := f.freeTextToBSON(freeText)
+
+		// Return as $and with field:value and $text search
+		return bson.M{
+			"$and": []bson.M{
+				fieldBSON,
+				freeTextBSON,
+			},
+		}
+	}
+
+	// Single term or other value type - handle normally
 	valueStr := f.extractValueString(fv.Value)
 	value, err := f.parseValue(valueStr)
 	if err != nil {

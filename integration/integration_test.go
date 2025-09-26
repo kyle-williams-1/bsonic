@@ -72,7 +72,7 @@ func TestBasicQueries(t *testing.T) {
 	}{
 		{
 			name:     "exact name match",
-			query:    "name:John Doe",
+			query:    "name:\"John Doe\"",
 			expected: 1,
 		},
 		{
@@ -177,7 +177,7 @@ func TestDotNotationQueries(t *testing.T) {
 	}{
 		{
 			name:     "profile location match",
-			query:    "profile.location:San Francisco, CA",
+			query:    "profile.location:\"San Francisco, CA\"",
 			expected: 1,
 		},
 		{
@@ -277,7 +277,7 @@ func TestLogicalOperators(t *testing.T) {
 		},
 		{
 			name:     "OR operation - John or Jane",
-			query:    "name:John Doe OR name:Jane Smith",
+			query:    "name:\"John Doe\" OR name:\"Jane Smith\"",
 			expected: 2,
 		},
 		{
@@ -322,7 +322,7 @@ func TestParenthesesGrouping(t *testing.T) {
 	}{
 		{
 			name:     "simple grouping - OR with AND",
-			query:    "(name:John Doe OR name:Jane Smith) AND active:true",
+			query:    "(name:\"John Doe\" OR name:\"Jane Smith\") AND active:true",
 			expected: 2, // Both John and Jane are active
 		},
 		{
@@ -332,22 +332,22 @@ func TestParenthesesGrouping(t *testing.T) {
 		},
 		{
 			name:     "nested parentheses",
-			query:    "((name:John Doe OR name:Jane Smith) AND active:true) OR role:moderator",
+			query:    "((name:\"John Doe\" OR name:\"Jane Smith\") AND active:true) OR role:moderator",
 			expected: 3, // John, Jane (active) + Bob (moderator)
 		},
 		{
 			name:     "complex precedence override",
-			query:    "name:John Doe OR (name:Jane Smith AND active:true)",
+			query:    "name:\"John Doe\" OR (name:\"Jane Smith\" AND active:true)",
 			expected: 2, // John (any condition) + Jane (if active)
 		},
 		{
 			name:     "grouped NOT operations",
-			query:    "(NOT role:admin) AND (NOT name:Bob Johnson)",
+			query:    "(NOT role:admin) AND (NOT name:\"Bob Johnson\")",
 			expected: 2, // Alice Brown and Jane Smith (not admin and not Bob)
 		},
 		{
 			name:     "multiple OR groups with AND",
-			query:    "(name:John Doe OR name:Jane Smith) AND (active:true OR role:moderator)",
+			query:    "(name:\"John Doe\" OR name:\"Jane Smith\") AND (active:true OR role:moderator)",
 			expected: 2, // John (active) + Jane (active)
 		},
 	}

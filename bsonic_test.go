@@ -958,6 +958,30 @@ func TestParseWhitespaceHandling(t *testing.T) {
 	}
 }
 
+func TestParseFieldValueWithSpaces(t *testing.T) {
+	parser := bsonic.New()
+
+	query, err := parser.Parse("name:John Doe")
+	if err != nil {
+		t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
+	}
+
+	// Debug output
+	t.Logf("Generated query: %+v", query)
+
+	// Should be parsed as name:John (regex) AND $text:"Doe"
+	expected := bson.M{
+		"$and": []bson.M{
+			{"name": "John"},
+			{"$text": bson.M{"$search": "Doe"}},
+		},
+	}
+
+	if !compareBSONValues(query, expected) {
+		t.Fatalf("Expected %+v, got %+v", expected, query)
+	}
+}
+
 func TestParseEdgeCases(t *testing.T) {
 	parser := bsonic.New()
 
@@ -1294,10 +1318,10 @@ func TestNOTInParentheses(t *testing.T) {
 		},
 		{
 			name:  "NOT in multiple parentheses",
-			query: "(NOT role:admin) AND (NOT name:Bob Johnson)",
+			query: "(NOT role:admin) AND (NOT name:Bob)",
 			expected: bson.M{
 				"role": bson.M{"$ne": "admin"},
-				"name": bson.M{"$ne": "Bob Johnson"},
+				"name": bson.M{"$ne": "Bob"},
 			},
 			desc: "Multiple NOT operations in separate parentheses",
 		},
@@ -1350,6 +1374,17 @@ func TestNOTInParentheses(t *testing.T) {
 				"name": bson.M{"$ne": "Bob"},
 			},
 			desc: "NOT with extra whitespace in parentheses",
+		},
+		{
+			name:  "NOT with multi-word field value (should split)",
+			query: "NOT name:Bob Johnson",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"name": bson.M{"$ne": "Bob"}},
+					{"$text": bson.M{"$ne": bson.M{"$search": "Johnson"}}},
+				},
+			},
+			desc: "NOT operation with multi-word field value should split into NOT (field:value AND $text:terms)",
 		},
 	}
 
