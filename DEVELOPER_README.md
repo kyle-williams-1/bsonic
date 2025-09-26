@@ -9,8 +9,6 @@ This document provides a comprehensive technical overview of the BSONIC library'
 - [Core Components](#core-components)
 - [Query Processing Flow](#query-processing-flow)
 - [Configuration System](#configuration-system)
-- [Parser Modes](#parser-modes)
-- [Value Parsing](#value-parsing)
 - [Error Handling](#error-handling)
 - [Performance](#performance)
 - [Extension Guide](#extension-guide)
@@ -64,7 +62,7 @@ bsonic/
 **Base Language Parser Interface:**
 ```go
 type Parser interface {
-    Parse(query string) (AST, error)
+    Parse(query string) (interface{}, error)
 }
 ```
 
