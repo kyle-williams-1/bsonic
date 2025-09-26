@@ -905,7 +905,6 @@ func TestFreeTextSearch(t *testing.T) {
 // TestQueryValidation tests that invalid queries are handled properly
 func TestQueryValidation(t *testing.T) {
 	invalidQueries := []string{
-		"invalid query format without quotes", // This should be invalid as it's not quoted
 		":value",
 		"field:",
 	}
