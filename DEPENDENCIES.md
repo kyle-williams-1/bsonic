@@ -37,16 +37,20 @@ Required dependencies for the BSON library and integration tests.
 - **Linux**: Usually pre-installed
 - **Fallback**: Script works without it
 
-### golangci-lint (Optional)
-- **Installation**: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
+### golangci-lint (Development)
+- **Purpose**: Code linting and quality checks
+- **Installation**: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
+- **Usage**: `make lint` (automatically runs if available)
 
 ## Quick Setup
 
 1. **Install Go**: Download from [golang.org](https://golang.org/dl/)
-2. **Install Docker**: Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-3. **Verify Installation**:
+2. **Install golangci-lint**: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
+3. **Install Docker**: Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+4. **Verify Installation**:
    ```bash
    go version
+   golangci-lint --version
    docker --version
    docker compose version
    ```

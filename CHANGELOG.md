@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.0-beta.1]
+
+### Added
+- **Participle integration** for robust parsing and grammar handling
+- **Developer documentation** with comprehensive architecture overview
+
+### Changed
+- **Refactored parsing engine** to use Participle for lexical analysis and AST generation
+- **Improved error handling** with better syntax error messages from Participle
+
+### Technical Improvements
+- Migrated from custom lexer to Participle lexer for better token recognition
+- Implemented proper grammar hierarchy with Participle struct tags
+- Added comprehensive AST to BSON conversion pipeline
+- Maintained backward compatibility with existing API
+
+### Documentation
+- Added `DEVELOPER_README.md` with detailed technical documentation
+- Documented Participle integration patterns and custom implementation details
+- Added visual flow diagrams and code distribution breakdown
+
 ## [v0.4.0-beta.1]
 
 ### Added

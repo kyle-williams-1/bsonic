@@ -15,12 +15,14 @@
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver.
+A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver. Built with extensibility in mind, supporting multiple query languages and output formatters.
 
 ## Features
 
 - **Lucene-style syntax**: Write queries in familiar Lucene format
 - **Field matching**: Support for exact matches and wildcard patterns
+- **Free text search**: Full-text search support with MongoDB `$text` operator
+- **Mixed queries**: Combine text search with field-specific queries
 - **Dot notation**: Query nested data structures using dot notation
 - **Array search**: Search within array fields
 - **Logical operators**: Support for AND, OR, and NOT operations
@@ -28,8 +30,9 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Date queries**: Full support for date range and comparison queries
 - **Number ranges**: Support for numeric range queries and comparisons
 - **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
-- **Full-text search**: Support for MongoDB text search with configurable search modes
 - **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
+- **Extensible architecture**: Easy to add new query languages and output formatters
+- **Configurable**: Flexible configuration system for language and formatter selection
 
 ## Installation
 
@@ -70,6 +73,74 @@ parser := bsonic.New()
 query, err := parser.Parse("name:john AND age:25")
 ```
 
+## Extensible Architecture
+
+Bsonic is built with extensibility in mind, allowing you to easily add new query languages and output formatters.
+
+### Configuration System
+
+The library uses a configuration system to specify which language parser and formatter to use:
+
+```go
+import (
+    "github.com/kyle-williams-1/bsonic"
+    "github.com/kyle-williams-1/bsonic/config"
+)
+
+// Default configuration (Lucene + BSON)
+parser := bsonic.New()
+
+// Custom configuration
+cfg := config.Default().
+    WithLanguage(config.LanguageLucene).
+    WithFormatter(config.FormatterBSON)
+
+parser, err := bsonic.NewWithConfig(cfg)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Available Languages
+
+- **Lucene** (`config.LanguageLucene`): Lucene-style query syntax (default)
+
+### Available Formatters
+
+- **BSON** (`config.FormatterBSON`): MongoDB BSON output format (default)
+
+### Adding New Languages
+
+To add a new query language (e.g., SQL):
+
+1. Create a new language package implementing the `language.Parser` interface
+2. Add the new language type to `config.LanguageType`
+3. Update the factory to handle the new language type
+
+### Adding New Formatters
+
+To add a new output formatter (e.g., for a different document database):
+
+1. Create a new formatter package implementing the `formatter.Formatter` interface
+2. Add the new formatter type to `config.FormatterType`
+3. Update the factory to handle the new formatter type
+
+### Package Structure
+
+The library is organized into several packages for maximum modularity:
+
+```
+bsonic/
+├── config/           # Configuration types and defaults
+├── language/         # Query language implementations
+│   ├── parser.go     # Language parser interface
+│   └── lucene/       # Lucene-style query parser
+├── formatter/        # Output formatter implementations
+│   ├── formatter.go  # Formatter interface
+│   └── bson/         # BSON output formatter
+└── bsonic.go         # Main parser, public API, and factory functions
+```
+
 ## Query Syntax
 
 ### Basic Field Matching
@@ -81,7 +152,7 @@ query, _ := bsonic.Parse("name:john")
 
 // Wildcard patterns
 query, _ := bsonic.Parse("name:jo*")
-// BSON: {"name": {"$regex": "jo.*", "$options": "i"}}
+// BSON: {"name": {"$regex": "^jo.*", "$options": "i"}}
 
 // Quoted values with spaces
 query, _ := bsonic.Parse(`name:"john doe"`)
@@ -102,6 +173,26 @@ query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
 
+### Free Text Search
+
+```go
+// Quoted text search
+query, _ := bsonic.Parse(`"John Doe"`)
+// BSON: {"$text": {"$search": "\"John Doe\""}}
+
+// Unquoted text search
+query, _ := bsonic.Parse("software engineer")
+// BSON: {"$text": {"$search": "software engineer"}}
+
+// Mixed text and field queries
+query, _ := bsonic.Parse(`"John Doe" AND active:true`)
+// BSON: {"$and": [{"$text": {"$search": "\"John Doe\""}}, {"active": true}]}
+
+// Text search with complex field conditions
+query, _ := bsonic.Parse(`"software engineer" AND (role:admin OR department:engineering)`)
+// BSON: {"$and": [{"$text": {"$search": "\"software engineer\""}}, {"$or": [{"role": "admin"}, {"department": "engineering"}]}]}
+```
+
 ### Logical Operators
 
 ```go
@@ -119,7 +210,7 @@ query, _ := bsonic.Parse("name:john AND NOT age:25")
 
 // Complex combinations
 query, _ := bsonic.Parse("name:jo* OR name:ja* AND NOT age:18")
-// BSON: {"$or": [{"name": {"$regex": "jo.*", "$options": "i"}}, {"name": {"$regex": "ja.*", "$options": "i"}}], "age": {"$ne": 18}}
+// BSON: {"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}], "age": {"$ne": 18}}
 ```
 
 ### Grouping Logic with Parentheses
@@ -154,7 +245,7 @@ query, _ := bsonic.Parse("((name:john OR name:jane) AND age:25) OR status:active
 
 // Grouped wildcards and numbers
 query, _ := bsonic.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
-// BSON: {"$and": [{"$or": [{"name": {"$regex": "jo.*", "$options": "i"}}, {"name": {"$regex": "ja.*", "$options": "i"}}]}, {"$or": [{"age": 25}, {"age": 30}]}]}
+// BSON: {"$and": [{"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}]}, {"$or": [{"age": 25}, {"age": 30}]}]}
 
 // Date range with grouped status
 query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
@@ -277,98 +368,53 @@ query, _ := parser.Parse("name:john")
 // BSON: {"name": "john"}
 ```
 
-### Full-Text Search
-
-Bsonic supports MongoDB's full-text search functionality, allowing you to search across multiple fields simultaneously.
-
-#### Enabling Text Search
+### Error Handling
 
 ```go
-// Create a parser with text search enabled
-parser := bsonic.NewWithTextSearch()
-
-// Or enable text search on an existing parser
-parser := bsonic.New()
-parser.SetSearchMode(bsonic.SearchModeText)
+func parseQuerySafely(query string) (bson.M, error) {
+    parser := bsonic.New()
+    
+    result, err := parser.Parse(query)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse query '%s': %w", query, err)
+    }
+    
+    return result, nil
+}
 ```
 
-#### Basic Text Search
+### Performance Considerations
+
+For high-performance applications, reuse parser instances:
 
 ```go
-// Simple text search
-query, _ := parser.Parse("search terms")
-// BSON: {"$text": {"$search": "search terms"}}
+// Good: Reuse parser instance
+var globalParser = bsonic.New()
 
-// Multiple words
-query, _ := parser.Parse("multiple words search")
-// BSON: {"$text": {"$search": "multiple words search"}}
+func processQueries(queries []string) []bson.M {
+    results := make([]bson.M, len(queries))
+    for i, query := range queries {
+        result, err := globalParser.Parse(query)
+        if err != nil {
+            // handle error
+            continue
+        }
+        results[i] = result
+    }
+    return results
+}
+
+// Avoid: Creating new parser for each query
+func processQueriesSlow(queries []string) []bson.M {
+    results := make([]bson.M, len(queries))
+    for i, query := range queries {
+        parser := bsonic.New() // Inefficient!
+        result, err := parser.Parse(query)
+        // ...
+    }
+    return results
+}
 ```
-
-#### Text Search vs Field Search
-
-When text search is enabled, bsonic automatically determines whether to use text search or field search:
-
-- **Text search**: Used when the query contains no field:value pairs (no colons)
-- **Field search**: Used when the query contains field:value pairs
-
-```go
-// This will use text search
-query, _ := parser.Parse("engineer software")
-// BSON: {"$text": {"$search": "engineer software"}}
-
-// This will use field search
-query, _ := parser.Parse("name:john")
-// BSON: {"name": "john"}}
-```
-
-#### MongoDB Text Index Requirements
-
-**Important**: To use text search, you must create text indexes on your MongoDB collections. Text indexes must be created on all fields you want to be searchable.
-
-```javascript
-// Example: Create a text index on multiple fields
-db.users.createIndex({ 
-  "name": "text", 
-  "email": "text", 
-  "profile.bio": "text",
-  "tags": "text"
-});
-
-// Example: Create a text index on product fields
-db.products.createIndex({ 
-  "name": "text", 
-  "category": "text",
-  "tags": "text",
-  "description": "text"
-});
-```
-
-#### Mixed Queries
-
-Mixed queries combine text search with field searches, allowing you to search for text terms while filtering by specific field values:
-
-```go
-// Text search combined with field search
-query, _ := parser.Parse("engineer active:true")
-// BSON: {"$and": [{"$text": {"$search": "engineer"}}, {"active": true}]}
-
-// Multiple text terms with field search
-query, _ := parser.Parse("software engineer role:admin")
-// BSON: {"$and": [{"$text": {"$search": "software engineer"}}, {"role": "admin"}]}
-
-// Text search with complex field queries
-query, _ := parser.Parse("designer role:user AND active:true")
-// BSON: {"$and": [{"$text": {"$search": "designer"}}, {"role": "user", "active": true}]}
-
-// Text search with OR field queries
-query, _ := parser.Parse("devops role:admin OR name:charlie")
-// BSON: {"$and": [{"$text": {"$search": "devops"}}, {"$or": [{"role": "admin"}, {"name": "charlie"}]}]}
-```
-
-**How it works:**
-- Text terms (without colons) are combined into a single `$text` search
-- Field:value pairs are parsed as regular field searches
-- Both are combined with `$and` operator for precise filtering
 
 ## Integration Testing
 
@@ -384,6 +430,16 @@ Check out the [examples](examples/) directory for more detailed usage examples.
 ## Contributing
 
 Contributions are welcome! Please open an issue or pull request on GitHub.
+
+### Development Setup
+
+For development, you'll need:
+
+1. **Go 1.25+**: [Download from golang.org](https://golang.org/dl/)
+2. **golangci-lint**: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
+3. **Docker** (for integration tests): [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+See [DEPENDENCIES.md](DEPENDENCIES.md) for complete dependency information.
 
 ## License
 
