@@ -6,7 +6,6 @@ import (
 
 	"github.com/kyle-williams-1/bsonic"
 	"github.com/kyle-williams-1/bsonic/config"
-	"github.com/kyle-williams-1/bsonic/factory"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -1591,40 +1590,40 @@ func TestConfigFunctions(t *testing.T) {
 
 // TestFactoryFunctions tests factory package functions
 func TestFactoryFunctions(t *testing.T) {
-	// Test CreateParser
-	parser, err := factory.CreateParser(config.LanguageLucene)
+	// Test NewParser
+	parser, err := bsonic.NewParser(config.LanguageLucene)
 	if err != nil {
-		t.Fatalf("CreateParser should not return error, got: %v", err)
+		t.Fatalf("NewParser should not return error, got: %v", err)
 	}
 	if parser == nil {
-		t.Fatal("CreateParser should return a non-nil parser")
+		t.Fatal("NewParser should return a non-nil parser")
 	}
 
-	// Test CreateParser with invalid language
-	_, err = factory.CreateParser("invalid")
+	// Test NewParser with invalid language
+	_, err = bsonic.NewParser("invalid")
 	if err == nil {
-		t.Fatal("CreateParser should return error for invalid language")
+		t.Fatal("NewParser should return error for invalid language")
 	}
 
-	// Test CreateFormatter
-	formatter, err := factory.CreateFormatter(config.FormatterBSON)
+	// Test NewFormatter
+	formatter, err := bsonic.NewFormatter(config.FormatterBSON)
 	if err != nil {
-		t.Fatalf("CreateFormatter should not return error, got: %v", err)
+		t.Fatalf("NewFormatter should not return error, got: %v", err)
 	}
 	if formatter == nil {
-		t.Fatal("CreateFormatter should return a non-nil formatter")
+		t.Fatal("NewFormatter should return a non-nil formatter")
 	}
 
-	// Test CreateFormatter with invalid formatter
-	_, err = factory.CreateFormatter("invalid")
+	// Test NewFormatter with invalid formatter
+	_, err = bsonic.NewFormatter("invalid")
 	if err == nil {
-		t.Fatal("CreateFormatter should return error for invalid formatter")
+		t.Fatal("NewFormatter should return error for invalid formatter")
 	}
 
-	// Test CreateBSONFormatter
-	bsonFormatter := factory.CreateBSONFormatter()
+	// Test NewBSONFormatter
+	bsonFormatter := bsonic.NewBSONFormatter()
 	if bsonFormatter == nil {
-		t.Fatal("CreateBSONFormatter should return a non-nil formatter")
+		t.Fatal("NewBSONFormatter should return a non-nil formatter")
 	}
 }
 

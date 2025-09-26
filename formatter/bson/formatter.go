@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kyle-williams-1/bsonic/formatter"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -21,8 +20,7 @@ func New() *Formatter {
 	return &Formatter{}
 }
 
-// Ensure Formatter implements the generic interface
-var _ formatter.Formatter[bson.M] = (*Formatter)(nil)
+// Note: Interface compliance is checked at compile time by the main package
 
 // Format converts a parsed query AST into a BSON document.
 func (f *Formatter) Format(ast interface{}) (bson.M, error) {

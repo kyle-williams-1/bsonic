@@ -2,12 +2,14 @@
 package bsonic
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/kyle-williams-1/bsonic/config"
-	"github.com/kyle-williams-1/bsonic/factory"
 	"github.com/kyle-williams-1/bsonic/formatter"
+	bsonformatter "github.com/kyle-williams-1/bsonic/formatter/bson"
 	"github.com/kyle-williams-1/bsonic/language"
+	"github.com/kyle-williams-1/bsonic/language/lucene"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -21,11 +23,36 @@ type Parser struct {
 	formatter formatter.Formatter[bson.M]
 }
 
+// NewParser creates a parser based on the language type.
+func NewParser(langType config.LanguageType) (language.Parser, error) {
+	switch langType {
+	case config.LanguageLucene:
+		return lucene.New(), nil
+	default:
+		return nil, fmt.Errorf("unsupported language type: %s", langType)
+	}
+}
+
+// NewFormatter creates a formatter based on the formatter type.
+func NewFormatter(formatterType config.FormatterType) (formatter.Formatter[bson.M], error) {
+	switch formatterType {
+	case config.FormatterBSON:
+		return bsonformatter.New(), nil
+	default:
+		return nil, fmt.Errorf("unsupported formatter type: %s", formatterType)
+	}
+}
+
+// NewBSONFormatter creates a BSON formatter with proper typing.
+func NewBSONFormatter() formatter.Formatter[bson.M] {
+	return bsonformatter.New()
+}
+
 // New creates a new BSON parser instance with default configuration.
 func New() *Parser {
 	cfg := config.Default()
-	languageParser, _ := factory.CreateParser(cfg.Language)
-	formatter, _ := factory.CreateFormatter(cfg.Formatter)
+	languageParser, _ := NewParser(cfg.Language)
+	formatter, _ := NewFormatter(cfg.Formatter)
 
 	return &Parser{
 		Config:         cfg,
@@ -36,12 +63,12 @@ func New() *Parser {
 
 // NewWithConfig creates a new parser with custom configuration.
 func NewWithConfig(cfg *config.Config) (*Parser, error) {
-	languageParser, err := factory.CreateParser(cfg.Language)
+	languageParser, err := NewParser(cfg.Language)
 	if err != nil {
 		return nil, err
 	}
 
-	formatter, err := factory.CreateFormatter(cfg.Formatter)
+	formatter, err := NewFormatter(cfg.Formatter)
 	if err != nil {
 		return nil, err
 	}
