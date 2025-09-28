@@ -205,6 +205,64 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 			t.Fatalf("Expected %+v, got %+v", expected, query)
 		}
 	})
+
+	// Test whitespace handling
+	t.Run("WhitespaceHandling", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input:    "  name:john  ",
+				expected: bson.M{"name": "john"},
+				desc:     "leading and trailing whitespace",
+			},
+			{
+				input:    "\tname:john\t",
+				expected: bson.M{"name": "john"},
+				desc:     "tab whitespace",
+			},
+			{
+				input:    "\nname:john\n",
+				expected: bson.M{"name": "john"},
+				desc:     "newline whitespace",
+			},
+			{
+				input:    "  name:john  AND  age:25  ",
+				expected: bson.M{"name": "john", "age": 25.0},
+				desc:     "whitespace around AND operator",
+			},
+			{
+				input: "  name:john  OR  age:25  ",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": "john"},
+						{"age": 25.0},
+					},
+				},
+				desc: "whitespace around OR operator",
+			},
+			{
+				input:    "  NOT  name:john  ",
+				expected: bson.M{"name": bson.M{"$ne": "john"}},
+				desc:     "whitespace around NOT operator",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 }
 
 // TestLogicalOperators tests AND, OR, and NOT operators with various combinations
@@ -403,6 +461,108 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 
 				if !compareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	// Test NOT in parentheses
+	t.Run("NOTInParentheses", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			query    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				name:  "NOT in single parentheses",
+				query: "(NOT role:admin)",
+				expected: bson.M{
+					"role": bson.M{"$ne": "admin"},
+				},
+				desc: "NOT operation inside single parentheses",
+			},
+			{
+				name:  "NOT in multiple parentheses",
+				query: "(NOT role:admin) AND (NOT name:Bob)",
+				expected: bson.M{
+					"role": bson.M{"$ne": "admin"},
+					"name": bson.M{"$ne": "Bob"},
+				},
+				desc: "Multiple NOT operations in separate parentheses",
+			},
+			{
+				name:  "NOT with complex field in parentheses",
+				query: "(NOT name:jo*) AND (NOT status:active)",
+				expected: bson.M{
+					"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
+					"status": bson.M{"$ne": "active"},
+				},
+				desc: "NOT with wildcard and simple field in parentheses",
+			},
+			{
+				name:  "NOT with quoted value in parentheses",
+				query: "(NOT name:\"john doe\") AND (NOT email:\"test@example.com\")",
+				expected: bson.M{
+					"name":  bson.M{"$ne": "john doe"},
+					"email": bson.M{"$ne": "test@example.com"},
+				},
+				desc: "NOT with quoted values in parentheses",
+			},
+			{
+				name:  "NOT with nested parentheses",
+				query: "((NOT role:admin) AND (NOT name:Bob)) OR status:active",
+				expected: bson.M{
+					"$or": []bson.M{
+						{
+							"role": bson.M{"$ne": "admin"},
+							"name": bson.M{"$ne": "Bob"},
+						},
+						{"status": "active"},
+					},
+				},
+				desc: "NOT with nested parentheses and OR condition",
+			},
+			{
+				name:  "NOT with date comparison in parentheses",
+				query: "(NOT created_at:>2024-01-01) AND (NOT updated_at:<2023-01-01)",
+				expected: bson.M{
+					"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				},
+				desc: "NOT with date comparisons in parentheses",
+			},
+			{
+				name:  "NOT with whitespace in parentheses",
+				query: "  (  NOT  role:admin  )  AND  (  NOT  name:Bob  )  ",
+				expected: bson.M{
+					"role": bson.M{"$ne": "admin"},
+					"name": bson.M{"$ne": "Bob"},
+				},
+				desc: "NOT with extra whitespace in parentheses",
+			},
+			{
+				name:  "NOT with multi-word field value (should split)",
+				query: "NOT name:Bob Johnson",
+				expected: bson.M{
+					"$or": []bson.M{
+						{"name": bson.M{"$ne": "Bob"}},
+						{"$text": bson.M{"$ne": bson.M{"$search": "Johnson"}}},
+					},
+				},
+				desc: "NOT operation with multi-word field value should split into NOT (field:value AND $text:terms)",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result, err := parser.Parse(test.query)
+				if err != nil {
+					t.Fatalf("Parse failed for query %q: %v", test.query, err)
+				}
+
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
 				}
 			})
 		}
@@ -1056,209 +1216,148 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 	})
 }
 
-// TestWildcardPatterns tests wildcard pattern matching
-func TestLuceneMongoWildcardPatterns(t *testing.T) {
+// TestPatternMatching tests both wildcard and regex pattern matching
+func TestLuceneMongoPatternMatching(t *testing.T) {
 	parser := bsonic.New()
 
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "name:*john*",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   ".*john.*",
-					"$options": "i",
+	t.Run("WildcardPatterns", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "name:*john*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*john.*",
+						"$options": "i",
+					},
 				},
+				desc: "contains pattern",
 			},
-			desc: "contains pattern",
-		},
-		{
-			input: "name:*john",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   ".*john$",
-					"$options": "i",
+			{
+				input: "name:*john",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*john$",
+						"$options": "i",
+					},
 				},
+				desc: "ends with pattern",
 			},
-			desc: "ends with pattern",
-		},
-		{
-			input: "name:john*",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   "^john.*",
-					"$options": "i",
+			{
+				input: "name:john*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   "^john.*",
+						"$options": "i",
+					},
 				},
+				desc: "starts with pattern",
 			},
-			desc: "starts with pattern",
-		},
-		{
-			input: "name:jo*n",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   "^jo.*n$",
-					"$options": "i",
+			{
+				input: "name:jo*n",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   "^jo.*n$",
+						"$options": "i",
+					},
 				},
+				desc: "starts and ends with specific patterns",
 			},
-			desc: "starts and ends with specific patterns",
-		},
-		{
-			input: "name:*",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   ".*",
-					"$options": "i",
+			{
+				input: "name:*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*",
+						"$options": "i",
+					},
 				},
+				desc: "wildcard only",
 			},
-			desc: "wildcard only",
-		},
-	}
+		}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 
-// TestRegexPatterns tests regex pattern matching
-func TestLuceneMongoRegexPatterns(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input: "name:/john/",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex": "john",
+	t.Run("RegexPatterns", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "name:/john/",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex": "john",
+					},
 				},
+				desc: "basic regex pattern",
 			},
-			desc: "basic regex pattern",
-		},
-		{
-			input: "name:/^john$/",
-			expected: bson.M{
-				"name": bson.M{
-					"$regex": "^john$",
+			{
+				input: "name:/^john$/",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex": "^john$",
+					},
 				},
+				desc: "anchored regex pattern",
 			},
-			desc: "anchored regex pattern",
-		},
-		{
-			input: "email:/.*@example\\.com$/",
-			expected: bson.M{
-				"email": bson.M{
-					"$regex": ".*@example\\.com$",
+			{
+				input: "email:/.*@example\\.com$/",
+				expected: bson.M{
+					"email": bson.M{
+						"$regex": ".*@example\\.com$",
+					},
 				},
+				desc: "complex regex pattern with escaped characters",
 			},
-			desc: "complex regex pattern with escaped characters",
-		},
-		{
-			input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
-			expected: bson.M{
-				"phone": bson.M{
-					"$regex": "\\d{3}-\\d{3}-\\d{4}",
+			{
+				input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
+				expected: bson.M{
+					"phone": bson.M{
+						"$regex": "\\d{3}-\\d{3}-\\d{4}",
+					},
 				},
+				desc: "regex pattern with digit matching",
 			},
-			desc: "regex pattern with digit matching",
-		},
-		{
-			input: "status:/^(active|pending|inactive)$/",
-			expected: bson.M{
-				"status": bson.M{
-					"$regex": "^(active|pending|inactive)$",
+			{
+				input: "status:/^(active|pending|inactive)$/",
+				expected: bson.M{
+					"status": bson.M{
+						"$regex": "^(active|pending|inactive)$",
+					},
 				},
+				desc: "regex pattern with alternation",
 			},
-			desc: "regex pattern with alternation",
-		},
-	}
+		}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
 
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
-}
-
-// TestWhitespaceHandling tests whitespace handling in queries
-func TestLuceneMongoWhitespaceHandling(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		input    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			input:    "  name:john  ",
-			expected: bson.M{"name": "john"},
-			desc:     "leading and trailing whitespace",
-		},
-		{
-			input:    "\tname:john\t",
-			expected: bson.M{"name": "john"},
-			desc:     "tab whitespace",
-		},
-		{
-			input:    "\nname:john\n",
-			expected: bson.M{"name": "john"},
-			desc:     "newline whitespace",
-		},
-		{
-			input:    "  name:john  AND  age:25  ",
-			expected: bson.M{"name": "john", "age": 25.0},
-			desc:     "whitespace around AND operator",
-		},
-		{
-			input: "  name:john  OR  age:25  ",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": "john"},
-					{"age": 25.0},
-				},
-			},
-			desc: "whitespace around OR operator",
-		},
-		{
-			input:    "  NOT  name:john  ",
-			expected: bson.M{"name": bson.M{"$ne": "john"}},
-			desc:     "whitespace around NOT operator",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			result, err := parser.Parse(test.input)
-			if err != nil {
-				t.Fatalf("Parse should not return error, got: %v", err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Expected %+v, got %+v", test.expected, result)
-			}
-		})
-	}
+				if !compareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
 }
 
 // TestErrorConditions tests various error conditions and edge cases
@@ -1485,270 +1584,164 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 			})
 		}
 	})
-}
 
-func TestLuceneMongoNOTInParentheses(t *testing.T) {
-	parser := bsonic.New()
+	// Test additional edge cases
+	t.Run("AdditionalEdgeCases", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			query       string
+			expectError bool
+			expected    bson.M
+		}{
+			{
+				name:        "empty query",
+				query:       "",
+				expectError: false,
+				expected:    bson.M{},
+			},
+			{
+				name:        "whitespace only",
+				query:       "   ",
+				expectError: false,
+				expected:    bson.M{},
+			},
+			{
+				name:        "invalid date range both wildcards",
+				query:       "created_at:[* TO *]",
+				expectError: false,
+				expected:    bson.M{"created_at": "[* TO *]"},
+			},
+			{
+				name:        "invalid number range both wildcards",
+				query:       "age:[* TO *]",
+				expectError: false,
+				expected:    bson.M{"age": "[* TO *]"},
+			},
+			{
+				name:        "invalid date range with bad dates",
+				query:       "created_at:[invalid TO 2023-12-31]",
+				expectError: false,
+				expected:    bson.M{"created_at": "[invalid TO 2023-12-31]"},
+			},
+			{
+				name:        "invalid number range with bad numbers",
+				query:       "age:[not-a-number TO 100]",
+				expectError: false,
+				expected:    bson.M{"age": "[not-a-number TO 100]"},
+			},
+			{
+				name:        "valid date range with wildcard start",
+				query:       "created_at:[* TO 2023-12-31]",
+				expectError: false,
+				expected:    bson.M{"created_at": bson.M{"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)}},
+			},
+			{
+				name:        "valid date range with wildcard end",
+				query:       "created_at:[2023-01-01 TO *]",
+				expectError: false,
+				expected:    bson.M{"created_at": bson.M{"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+			},
+			{
+				name:        "valid number range with wildcard start",
+				query:       "age:[* TO 65]",
+				expectError: false,
+				expected:    bson.M{"age": bson.M{"$lte": 65.0}},
+			},
+			{
+				name:        "valid number range with wildcard end",
+				query:       "age:[18 TO *]",
+				expectError: false,
+				expected:    bson.M{"age": bson.M{"$gte": 18.0}},
+			},
+		}
 
-	tests := []struct {
-		name     string
-		query    string
-		expected bson.M
-		desc     string
-	}{
-		{
-			name:  "NOT in single parentheses",
-			query: "(NOT role:admin)",
-			expected: bson.M{
-				"role": bson.M{"$ne": "admin"},
-			},
-			desc: "NOT operation inside single parentheses",
-		},
-		{
-			name:  "NOT in multiple parentheses",
-			query: "(NOT role:admin) AND (NOT name:Bob)",
-			expected: bson.M{
-				"role": bson.M{"$ne": "admin"},
-				"name": bson.M{"$ne": "Bob"},
-			},
-			desc: "Multiple NOT operations in separate parentheses",
-		},
-		{
-			name:  "NOT with complex field in parentheses",
-			query: "(NOT name:jo*) AND (NOT status:active)",
-			expected: bson.M{
-				"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
-				"status": bson.M{"$ne": "active"},
-			},
-			desc: "NOT with wildcard and simple field in parentheses",
-		},
-		{
-			name:  "NOT with quoted value in parentheses",
-			query: "(NOT name:\"john doe\") AND (NOT email:\"test@example.com\")",
-			expected: bson.M{
-				"name":  bson.M{"$ne": "john doe"},
-				"email": bson.M{"$ne": "test@example.com"},
-			},
-			desc: "NOT with quoted values in parentheses",
-		},
-		{
-			name:  "NOT with nested parentheses",
-			query: "((NOT role:admin) AND (NOT name:Bob)) OR status:active",
-			expected: bson.M{
-				"$or": []bson.M{
-					{
-						"role": bson.M{"$ne": "admin"},
-						"name": bson.M{"$ne": "Bob"},
-					},
-					{"status": "active"},
-				},
-			},
-			desc: "NOT with nested parentheses and OR condition",
-		},
-		{
-			name:  "NOT with date comparison in parentheses",
-			query: "(NOT created_at:>2024-01-01) AND (NOT updated_at:<2023-01-01)",
-			expected: bson.M{
-				"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-				"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
-			},
-			desc: "NOT with date comparisons in parentheses",
-		},
-		{
-			name:  "NOT with whitespace in parentheses",
-			query: "  (  NOT  role:admin  )  AND  (  NOT  name:Bob  )  ",
-			expected: bson.M{
-				"role": bson.M{"$ne": "admin"},
-				"name": bson.M{"$ne": "Bob"},
-			},
-			desc: "NOT with extra whitespace in parentheses",
-		},
-		{
-			name:  "NOT with multi-word field value (should split)",
-			query: "NOT name:Bob Johnson",
-			expected: bson.M{
-				"$or": []bson.M{
-					{"name": bson.M{"$ne": "Bob"}},
-					{"$text": bson.M{"$ne": bson.M{"$search": "Johnson"}}},
-				},
-			},
-			desc: "NOT operation with multi-word field value should split into NOT (field:value AND $text:terms)",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := parser.Parse(test.query)
-			if err != nil {
-				t.Fatalf("Parse failed for query %q: %v", test.query, err)
-			}
-
-			if !compareBSONValues(result, test.expected) {
-				t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
-			}
-		})
-	}
-}
-
-// TestAdditionalEdgeCases tests additional edge cases through public API
-func TestLuceneMongoAdditionalEdgeCases(t *testing.T) {
-	parser := bsonic.New()
-
-	tests := []struct {
-		name        string
-		query       string
-		expectError bool
-		expected    bson.M
-	}{
-		{
-			name:        "empty query",
-			query:       "",
-			expectError: false,
-			expected:    bson.M{},
-		},
-		{
-			name:        "whitespace only",
-			query:       "   ",
-			expectError: false,
-			expected:    bson.M{},
-		},
-		{
-			name:        "invalid date range both wildcards",
-			query:       "created_at:[* TO *]",
-			expectError: false,
-			expected:    bson.M{"created_at": "[* TO *]"},
-		},
-		{
-			name:        "invalid number range both wildcards",
-			query:       "age:[* TO *]",
-			expectError: false,
-			expected:    bson.M{"age": "[* TO *]"},
-		},
-		{
-			name:        "invalid date range with bad dates",
-			query:       "created_at:[invalid TO 2023-12-31]",
-			expectError: false,
-			expected:    bson.M{"created_at": "[invalid TO 2023-12-31]"},
-		},
-		{
-			name:        "invalid number range with bad numbers",
-			query:       "age:[not-a-number TO 100]",
-			expectError: false,
-			expected:    bson.M{"age": "[not-a-number TO 100]"},
-		},
-		{
-			name:        "valid date range with wildcard start",
-			query:       "created_at:[* TO 2023-12-31]",
-			expectError: false,
-			expected:    bson.M{"created_at": bson.M{"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)}},
-		},
-		{
-			name:        "valid date range with wildcard end",
-			query:       "created_at:[2023-01-01 TO *]",
-			expectError: false,
-			expected:    bson.M{"created_at": bson.M{"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
-		},
-		{
-			name:        "valid number range with wildcard start",
-			query:       "age:[* TO 65]",
-			expectError: false,
-			expected:    bson.M{"age": bson.M{"$lte": 65.0}},
-		},
-		{
-			name:        "valid number range with wildcard end",
-			query:       "age:[18 TO *]",
-			expectError: false,
-			expected:    bson.M{"age": bson.M{"$gte": 18.0}},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := parser.Parse(test.query)
-			if test.expectError {
-				if err == nil {
-					t.Fatalf("Expected error for query: %s", test.query)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result, err := parser.Parse(test.query)
+				if test.expectError {
+					if err == nil {
+						t.Fatalf("Expected error for query: %s", test.query)
+					}
+				} else {
+					if err != nil {
+						t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
+					}
+					if !compareBSONValues(result, test.expected) {
+						t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
+					}
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
-				}
-				if !compareBSONValues(result, test.expected) {
-					t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
-				}
-			}
-		})
-	}
-}
+			})
+		}
+	})
 
-func TestLuceneMongoComplexQueryEdgeCases(t *testing.T) {
-	parser := bsonic.New()
+	// Test complex query edge cases
+	t.Run("ComplexQueryEdgeCases", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			query       string
+			expectError bool
+			description string
+		}{
+			{
+				name:        "nested parentheses with complex logic",
+				query:       "((name:john OR name:jane) AND age:25) OR (status:active AND role:admin)",
+				expectError: false,
+				description: "complex nested parentheses",
+			},
+			{
+				name:        "multiple NOT operations",
+				query:       "NOT name:john AND NOT age:25",
+				expectError: false,
+				description: "multiple NOT operations",
+			},
+			{
+				name:        "NOT with parentheses",
+				query:       "NOT (name:john OR age:25)",
+				expectError: false,
+				description: "NOT with grouped OR",
+			},
+			{
+				name:        "complex wildcard patterns",
+				query:       "name:jo*n AND email:*@example.com",
+				expectError: false,
+				description: "complex wildcard patterns",
+			},
+			{
+				name:        "mixed date and number ranges",
+				query:       "created_at:[2023-01-01 TO 2023-12-31] AND age:[18 TO 65]",
+				expectError: false,
+				description: "mixed date and number ranges",
+			},
+			{
+				name:        "complex comparison operators",
+				query:       "score:>85 AND rating:>=4.5 AND price:<100",
+				expectError: false,
+				description: "complex comparison operators",
+			},
+		}
 
-	tests := []struct {
-		name        string
-		query       string
-		expectError bool
-		description string
-	}{
-		{
-			name:        "nested parentheses with complex logic",
-			query:       "((name:john OR name:jane) AND age:25) OR (status:active AND role:admin)",
-			expectError: false,
-			description: "complex nested parentheses",
-		},
-		{
-			name:        "multiple NOT operations",
-			query:       "NOT name:john AND NOT age:25",
-			expectError: false,
-			description: "multiple NOT operations",
-		},
-		{
-			name:        "NOT with parentheses",
-			query:       "NOT (name:john OR age:25)",
-			expectError: false,
-			description: "NOT with grouped OR",
-		},
-		{
-			name:        "complex wildcard patterns",
-			query:       "name:jo*n AND email:*@example.com",
-			expectError: false,
-			description: "complex wildcard patterns",
-		},
-		{
-			name:        "mixed date and number ranges",
-			query:       "created_at:[2023-01-01 TO 2023-12-31] AND age:[18 TO 65]",
-			expectError: false,
-			description: "mixed date and number ranges",
-		},
-		{
-			name:        "complex comparison operators",
-			query:       "score:>85 AND rating:>=4.5 AND price:<100",
-			expectError: false,
-			description: "complex comparison operators",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := parser.Parse(test.query)
-			if test.expectError {
-				if err == nil {
-					t.Fatalf("Expected error for query: %s", test.query)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result, err := parser.Parse(test.query)
+				if test.expectError {
+					if err == nil {
+						t.Fatalf("Expected error for query: %s", test.query)
+					}
+				} else {
+					if err != nil {
+						t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
+					}
+					if result == nil {
+						t.Fatalf("Expected non-nil result for query: %s", test.query)
+					}
+					// Just verify it parses without error and produces some BSON
+					if len(result) == 0 && test.query != "" {
+						t.Fatalf("Expected non-empty result for query: %s", test.query)
+					}
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
-				}
-				if result == nil {
-					t.Fatalf("Expected non-nil result for query: %s", test.query)
-				}
-				// Just verify it parses without error and produces some BSON
-				if len(result) == 0 && test.query != "" {
-					t.Fatalf("Expected non-empty result for query: %s", test.query)
-				}
-			}
-		})
-	}
+			})
+		}
+	})
 }
 
 // TestConfigurationAndFactory tests configuration and factory functions
