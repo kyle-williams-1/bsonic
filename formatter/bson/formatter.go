@@ -40,6 +40,7 @@ func (f *Formatter) parseValue(valueStr string) (interface{}, error) {
 	parsers := []func(string) (interface{}, error, bool){
 		f.tryParseRange,
 		f.tryParseComparison,
+		f.tryParseRegex,
 		f.tryParseWildcard,
 		f.tryParseDate,
 		f.tryParseNumber,
@@ -78,6 +79,15 @@ func (f *Formatter) tryParseComparison(valueStr string) (interface{}, error, boo
 func (f *Formatter) tryParseWildcard(valueStr string) (interface{}, error, bool) {
 	if strings.Contains(valueStr, "*") {
 		result, err := f.parseWildcard(valueStr)
+		return result, err, true
+	}
+	return nil, nil, false
+}
+
+// tryParseRegex attempts to parse a regex value
+func (f *Formatter) tryParseRegex(valueStr string) (interface{}, error, bool) {
+	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
+		result, err := f.parseRegex(valueStr)
 		return result, err, true
 	}
 	return nil, nil, false
@@ -224,6 +234,15 @@ func (f *Formatter) isEndsWithPattern(valueStr string) bool {
 // isStartsWithPattern checks if the pattern is a starts with pattern (J*)
 func (f *Formatter) isStartsWithPattern(valueStr string) bool {
 	return !strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
+}
+
+// parseRegex parses a regex pattern and returns a regex BSON query
+func (f *Formatter) parseRegex(valueStr string) (bson.M, error) {
+	// Remove the leading and trailing slashes
+	pattern := valueStr[1 : len(valueStr)-1]
+
+	// Return as MongoDB regex query (case-sensitive by default)
+	return bson.M{"$regex": pattern}, nil
 }
 
 // parseDateRange parses date range queries
@@ -515,6 +534,7 @@ func (f *Formatter) extractValueString(value *lucene.ParticipleValue) string {
 		f.extractBracketed,
 		f.extractDateTime,
 		f.extractTimeString,
+		f.extractRegex,
 	}
 
 	for _, extractor := range valueExtractors {
@@ -569,6 +589,14 @@ func (f *Formatter) extractDateTime(value *lucene.ParticipleValue) (string, bool
 func (f *Formatter) extractTimeString(value *lucene.ParticipleValue) (string, bool) {
 	if value.TimeString != nil {
 		return *value.TimeString, true
+	}
+	return "", false
+}
+
+// extractRegex extracts regex from ParticipleValue
+func (f *Formatter) extractRegex(value *lucene.ParticipleValue) (string, bool) {
+	if value.Regex != nil {
+		return *value.Regex, true
 	}
 	return "", false
 }

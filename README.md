@@ -13,6 +13,7 @@
 [![codecov](https://codecov.io/gh/kyle-williams-1/bsonic/branch/main/graph/badge.svg)](https://codecov.io/gh/kyle-williams-1/bsonic)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kyle-williams-1/bsonic)](https://goreportcard.com/report/github.com/kyle-williams-1/bsonic)
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org/)
+[![Go Reference](https://pkg.go.dev/badge/github.com/kyle-williams-1/bsonic.svg)](https://pkg.go.dev/github.com/kyle-williams-1/bsonic)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert human-readable query strings into MongoDB BSON documents that work seamlessly with the official MongoDB Go driver. Built with extensibility in mind, supporting multiple query languages and output formatters.
@@ -20,19 +21,14 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 ## Features
 
 - **Lucene-style syntax**: Write queries in familiar Lucene format
-- **Field matching**: Support for exact matches and wildcard patterns
-- **Free text search**: Full-text search support with MongoDB `$text` operator
+- **Field matching**: Exact matches, wildcard patterns, and regex support
+- **Free text search**: Full-text search with MongoDB `$text` operator
 - **Mixed queries**: Combine text search with field-specific queries
-- **Dot notation**: Query nested data structures using dot notation
-- **Array search**: Search within array fields
-- **Logical operators**: Support for AND, OR, and NOT operations
-- **Grouping logic**: Parentheses support for complex query grouping and precedence control
-- **Date queries**: Full support for date range and comparison queries
-- **Number ranges**: Support for numeric range queries and comparisons
-- **Type-aware parsing**: Automatically detects and parses booleans, numbers, and dates
-- **MongoDB compatible**: Generates BSON that works with the latest MongoDB Go driver
-- **Extensible architecture**: Easy to add new query languages and output formatters
-- **Configurable**: Flexible configuration system for language and formatter selection
+- **Nested data**: Dot notation for nested fields and array search
+- **Logical operators**: AND, OR, NOT with parentheses grouping
+- **Date & number queries**: Range queries and comparisons with type-aware parsing
+- **MongoDB compatible**: Generates BSON for the official MongoDB Go driver
+- **Extensible**: Easy to add new query languages and output formatters
 
 ## Installation
 
@@ -75,11 +71,9 @@ query, err := parser.Parse("name:john AND age:25")
 
 ## Extensible Architecture
 
-Bsonic is built with extensibility in mind, allowing you to easily add new query languages and output formatters.
+Bsonic supports multiple query languages and output formatters through a modular design.
 
-### Configuration System
-
-The library uses a configuration system to specify which language parser and formatter to use:
+### Configuration
 
 ```go
 import (
@@ -87,63 +81,31 @@ import (
     "github.com/kyle-williams-1/bsonic/config"
 )
 
-// Default configuration (Lucene + BSON)
+// Default (Lucene + BSON)
 parser := bsonic.New()
 
 // Custom configuration
 cfg := config.Default().
     WithLanguage(config.LanguageLucene).
     WithFormatter(config.FormatterBSON)
-
-parser, err := bsonic.NewWithConfig(cfg)
-if err != nil {
-    log.Fatal(err)
-}
+parser, _ := bsonic.NewWithConfig(cfg)
 ```
-
-### Available Languages
-
-- **Lucene** (`config.LanguageLucene`): Lucene-style query syntax (default)
-
-### Available Formatters
-
-- **BSON** (`config.FormatterBSON`): MongoDB BSON output format (default)
-
-### Adding New Languages
-
-To add a new query language (e.g., SQL):
-
-1. Create a new language package implementing the `language.Parser` interface
-2. Add the new language type to `config.LanguageType`
-3. Update the factory to handle the new language type
-
-### Adding New Formatters
-
-To add a new output formatter (e.g., for a different document database):
-
-1. Create a new formatter package implementing the `formatter.Formatter` interface
-2. Add the new formatter type to `config.FormatterType`
-3. Update the factory to handle the new formatter type
 
 ### Package Structure
 
-The library is organized into several packages for maximum modularity:
-
 ```
 bsonic/
-├── config/           # Configuration types and defaults
-├── language/         # Query language implementations
-│   ├── parser.go     # Language parser interface
-│   └── lucene/       # Lucene-style query parser
-├── formatter/        # Output formatter implementations
-│   ├── formatter.go  # Formatter interface
-│   └── bson/         # BSON output formatter
-└── bsonic.go         # Main parser, public API, and factory functions
+├── config/           # Configuration types
+├── language/lucene/  # Lucene query parser
+├── formatter/bson/   # BSON output formatter
+└── bsonic.go         # Main API
 ```
+
+**Adding New Languages/Formatters:** Implement the `language.Parser` or `formatter.Formatter` interfaces.
 
 ## Query Syntax
 
-### Basic Field Matching
+### Field Matching
 
 ```go
 // Exact match
@@ -154,21 +116,19 @@ query, _ := bsonic.Parse("name:john")
 query, _ := bsonic.Parse("name:jo*")
 // BSON: {"name": {"$regex": "^jo.*", "$options": "i"}}
 
+// Regex patterns (case-sensitive by default)
+query, _ := bsonic.Parse("email:/.*@example\\.com/")
+// BSON: {"email": {"$regex": ".*@example\\.com"}}
+
 // Quoted values with spaces
 query, _ := bsonic.Parse(`name:"john doe"`)
 // BSON: {"name": "john doe"}
-```
 
-### Dot Notation for Nested Fields
-
-```go
+// Nested fields
 query, _ := bsonic.Parse("user.profile.email:john@example.com")
 // BSON: {"user.profile.email": "john@example.com"}
-```
 
-### Array Field Queries
-
-```go
+// Array fields
 query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
@@ -193,262 +153,89 @@ query, _ := bsonic.Parse(`"software engineer" AND (role:admin OR department:engi
 // BSON: {"$and": [{"$text": {"$search": "\"software engineer\""}}, {"$or": [{"role": "admin"}, {"department": "engineering"}]}]}
 ```
 
-### Logical Operators
+### Logical Operators & Grouping
+
+**Operator Precedence:** `NOT` > `AND` > `OR`
 
 ```go
-// AND operation
+// Basic operations
 query, _ := bsonic.Parse("name:john AND age:25")
 // BSON: {"age": 25, "name": "john"}
 
-// OR operation
 query, _ := bsonic.Parse("name:john OR name:jane")
 // BSON: {"$or": [{"name": "john"}, {"name": "jane"}]}
 
-// NOT operation
 query, _ := bsonic.Parse("name:john AND NOT age:25")
 // BSON: {"age": {"$ne": 25}, "name": "john"}
 
-// Complex combinations
-query, _ := bsonic.Parse("name:jo* OR name:ja* AND NOT age:18")
-// BSON: {"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}], "age": {"$ne": 18}}
-```
-
-### Grouping Logic with Parentheses
-
-Bsonic supports parentheses for grouping expressions and controlling operator precedence.
-
-**Operator Precedence (without parentheses):**
-1. `NOT` (highest precedence)
-2. `AND` 
-3. `OR` (lowest precedence)
-
-```go
-// Grouped OR with AND
+// Grouping with parentheses
 query, _ := bsonic.Parse("(name:john OR name:jane) AND age:25")
 // BSON: {"$and": [{"$or": [{"name": "john"}, {"name": "jane"}]}, {"age": 25}]}
 
-// OR with grouped AND
-query, _ := bsonic.Parse("name:john OR (name:jane AND age:25)")
-// BSON: {"$or": [{"name": "john"}, {"name": "jane", "age": 25}]}
-
-// Grouped AND expressions with OR
-query, _ := bsonic.Parse("(name:john AND age:25) OR (name:jane AND age:30)")
-// BSON: {"$or": [{"name": "john", "age": 25}, {"name": "jane", "age": 30}]}
-
-// NOT with grouped OR
 query, _ := bsonic.Parse("NOT (name:john OR name:jane)")
-// BSON: {"$or": [{"name": {"$ne": "john"}}, {"name": {"$ne": "jane"}}]}
+// BSON: {"$and": [{"name": {"$ne": "john"}}, {"name": {"$ne": "jane"}}]}
 
-// Nested parentheses
-query, _ := bsonic.Parse("((name:john OR name:jane) AND age:25) OR status:active")
-// BSON: {"$or": [{"$and": [{"$or": [{"name": "john"}, {"name": "jane"}]}, {"age": 25}]}, {"status": "active"}]}
-
-// Grouped wildcards and numbers
-query, _ := bsonic.Parse("(name:jo* OR name:ja*) AND (age:25 OR age:30)")
-// BSON: {"$and": [{"$or": [{"name": {"$regex": "^jo.*", "$options": "i"}}, {"name": {"$regex": "^ja.*", "$options": "i"}}]}, {"$or": [{"age": 25}, {"age": 30}]}]}
-
-// Date range with grouped status
-query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND (status:active OR status:pending)")
-// BSON: {"$and": [{"$or": [{"status": "active"}, {"status": "pending"}]}, {"created_at": {"$gte": "2023-01-01 00:00:00 +0000 UTC", "$lte": "2023-12-31 00:00:00 +0000 UTC"}}]}
+// Complex combinations with regex
+query, _ := bsonic.Parse("name:/john/ OR email:/.*@example\\.com/ AND NOT status:inactive")
+// BSON: {"$or": [{"name": {"$regex": "john"}}, {"email": {"$regex": ".*@example\\.com"}, "status": {"$ne": "inactive"}}]}
 ```
 
-**Note:** Parentheses must be properly matched.
-
-### Date Queries
+### Date & Number Queries
 
 ```go
-// Exact date
-query, _ := bsonic.Parse("created_at:2023-01-15")
-// BSON: {"created_at": "2023-01-15 00:00:00 +0000 UTC"}
-
-// Date range
+// Date ranges and comparisons
 query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31]")
 // BSON: {"created_at": {"$gte": "2023-01-01 00:00:00 +0000 UTC", "$lte": "2023-12-31 00:00:00 +0000 UTC"}}
 
-// Date range with wildcards
-query, _ := bsonic.Parse("created_at:[2023-01-01 TO *]")
-// BSON: {"created_at": {"$gte": "2023-01-01 00:00:00 +0000 UTC"}}
-
-query, _ := bsonic.Parse("created_at:[* TO 2023-12-31]")
-// BSON: {"created_at": {"$lte": "2023-12-31 00:00:00 +0000 UTC"}}
-
-// Date comparisons
 query, _ := bsonic.Parse("created_at:>2024-01-01")
 // BSON: {"created_at": {"$gt": "2024-01-01 00:00:00 +0000 UTC"}}
 
-query, _ := bsonic.Parse("created_at:<2023-12-31")
-// BSON: {"created_at": {"$lt": "2023-12-31 00:00:00 +0000 UTC"}}
-
-query, _ := bsonic.Parse("created_at:>=2024-01-01")
-// BSON: {"created_at": {"$gte": "2024-01-01 00:00:00 +0000 UTC"}}
-
-query, _ := bsonic.Parse("created_at:<=2023-12-31")
-// BSON: {"created_at": {"$lte": "2023-12-31 00:00:00 +0000 UTC"}}
-
-// Complex date queries
-query, _ := bsonic.Parse("created_at:[2023-01-01 TO 2023-12-31] AND status:active")
-// BSON: {"created_at": {"$gte": "2023-01-01 00:00:00 +0000 UTC", "$lte": "2023-12-31 00:00:00 +0000 UTC"}, "status": "active"}
-
-query, _ := bsonic.Parse("created_at:>2024-01-01 OR updated_at:<2023-01-01")
-// BSON: {"$or": [{"created_at": {"$gt": "2024-01-01 00:00:00 +0000 UTC"}}, {"updated_at": {"$lt": "2023-01-01 00:00:00 +0000 UTC"}}]}
-```
-
-### Number Range Queries
-
-```go
-// Number ranges
+// Number ranges and comparisons
 query, _ := bsonic.Parse("age:[18 TO 65]")
 // BSON: {"age": {"$gte": 18, "$lte": 65}}
 
-// Decimal number ranges
-query, _ := bsonic.Parse("price:[10.50 TO 99.99]")
-// BSON: {"price": {"$gte": 10.5, "$lte": 99.99}}
-
-// Number ranges with wildcards
-query, _ := bsonic.Parse("age:[18 TO *]")
-// BSON: {"age": {"$gte": 18}}
-
-query, _ := bsonic.Parse("age:[* TO 65]")
-// BSON: {"age": {"$lte": 65}}
-
-// Number comparisons
 query, _ := bsonic.Parse("score:>85")
 // BSON: {"score": {"$gt": 85}}
 
-query, _ := bsonic.Parse("score:<60")
-// BSON: {"score": {"$lt": 60}}
-
-query, _ := bsonic.Parse("score:>=90")
-// BSON: {"score": {"$gte": 90}}
-
-query, _ := bsonic.Parse("score:<=50")
-// BSON: {"score": {"$lte": 50}}
-
-// Complex number queries
-query, _ := bsonic.Parse("age:[18 TO 65] AND status:active")
-// BSON: {"age": {"$gte": 18, "$lte": 65}, "status": "active"}
-
-query, _ := bsonic.Parse("age:>18 OR score:<60")
-// BSON: {"$or": [{"age": {"$gt": 18}}, {"score": {"$lt": 60}}]}
-
-query, _ := bsonic.Parse("price:[0 TO 100] OR rating:[4 TO 5]")
-// BSON: {"$or": [{"price": {"$gte": 0, "$lte": 100}}, {"rating": {"$gte": 4, "$lte": 5}}]}
+// Type-aware parsing (auto-detects booleans, numbers, dates)
+query, _ := bsonic.Parse("active:true AND age:25 AND created_at:2023-01-15")
+// BSON: {"active": true, "age": 25, "created_at": "2023-01-15 00:00:00 +0000 UTC"}
 ```
 
-### Supported Date Formats
+**Supported Date Formats:** `2023-01-15`, `2023-01-15T10:30:00Z`, `01/15/2023`, etc.
 
-The library automatically detects and parses various date formats:
-
-- `2023-01-15` (ISO 8601 date)
-- `2023-01-15T10:30:00Z` (ISO 8601 datetime)
-- `2023-01-15T10:30:00` (ISO 8601 datetime without timezone)
-- `2023-01-15 10:30:00` (space-separated datetime)
-- `01/15/2023` (US format)
-- `2023/01/15` (ISO format)
-
-### Type-Aware Parsing
-
-The library automatically detects and parses different data types:
+### Error Handling & Performance
 
 ```go
-// Boolean values
-query, _ := parser.Parse("active:true")
-// BSON: {"active": true}
-
-// Numeric values
-query, _ := parser.Parse("age:25")
-// BSON: {"age": 25}
-
-// Date values
-query, _ := parser.Parse("created_at:2023-01-15")
-// BSON: {"created_at": "2023-01-15 00:00:00 +0000 UTC"}
-
-// String values (default)
-query, _ := parser.Parse("name:john")
-// BSON: {"name": "john"}
-```
-
-### Error Handling
-
-```go
+// Safe parsing with error handling
 func parseQuerySafely(query string) (bson.M, error) {
-    parser := bsonic.New()
-    
-    result, err := parser.Parse(query)
+    result, err := bsonic.Parse(query)
     if err != nil {
         return nil, fmt.Errorf("failed to parse query '%s': %w", query, err)
     }
-    
     return result, nil
 }
-```
 
-### Performance Considerations
-
-For high-performance applications, reuse parser instances:
-
-```go
-// Good: Reuse parser instance
+// For high-performance applications, reuse parser instances
 var globalParser = bsonic.New()
-
-func processQueries(queries []string) []bson.M {
-    results := make([]bson.M, len(queries))
-    for i, query := range queries {
-        result, err := globalParser.Parse(query)
-        if err != nil {
-            // handle error
-            continue
-        }
-        results[i] = result
-    }
-    return results
-}
-
-// Avoid: Creating new parser for each query
-func processQueriesSlow(queries []string) []bson.M {
-    results := make([]bson.M, len(queries))
-    for i, query := range queries {
-        parser := bsonic.New() // Inefficient!
-        result, err := parser.Parse(query)
-        // ...
-    }
-    return results
-}
 ```
 
-## Integration Testing
+## Examples & Testing
 
-This library includes comprehensive integration tests that run against a real MongoDB instance.
-
-- [Integration Testing Guide](integration/README.md) - Complete setup and testing guide
-- [Integration Troubleshooting](integration/INTEGRATION_TROUBLESHOOTING.md) - Common issues and solutions
-
-## Examples
-
-Check out the [examples](examples/) directory for more detailed usage examples.
+- [Examples](examples/) - Detailed usage examples
+- [Integration Tests](integration/README.md) - MongoDB integration testing guide
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request on GitHub.
+Contributions welcome! See [DEPENDENCIES.md](DEPENDENCIES.md) for development setup.
 
-### Development Setup
-
-For development, you'll need:
-
-1. **Go 1.25+**: [Download from golang.org](https://golang.org/dl/)
-2. **golangci-lint**: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
-3. **Docker** (for integration tests): [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-See [DEPENDENCIES.md](DEPENDENCIES.md) for complete dependency information.
+**Requirements:** Go 1.25+, golangci-lint, Docker (for integration tests)
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
-## Dependencies
+## Links
 
-See [DEPENDENCIES.md](DEPENDENCIES.md) for information about required and optional dependencies.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a list of changes and new features.
+- [Changelog](CHANGELOG.md) - Recent changes and features
+- [Dependencies](DEPENDENCIES.md) - Required and optional dependencies
