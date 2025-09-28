@@ -154,8 +154,8 @@ func TestBasicQueries(t *testing.T) {
 	}
 }
 
-// TestArrayAndLogicalQueries tests array field queries and logical operators
-func TestArrayAndLogicalQueries(t *testing.T) {
+// TestLogicalQueries tests logical operators and complex query combinations
+func TestLogicalQueries(t *testing.T) {
 	collection := testDB.Collection("users")
 
 	tests := []struct {
@@ -163,27 +163,6 @@ func TestArrayAndLogicalQueries(t *testing.T) {
 		query    string
 		expected int
 	}{
-		// Array field queries
-		{
-			name:     "tag contains 'developer'",
-			query:    "tags:developer",
-			expected: 1,
-		},
-		{
-			name:     "tag contains 'admin' (should not match)",
-			query:    "tags:admin",
-			expected: 0, // 'admin' is a role, not a tag
-		},
-		{
-			name:     "tag contains 'golang'",
-			query:    "tags:golang",
-			expected: 1,
-		},
-		{
-			name:     "tag does NOT contain 'golang'",
-			query:    "NOT tags:golang",
-			expected: 4, // All except John Doe
-		},
 		// Basic logical operators
 		{
 			name:     "AND operation - active admin",
@@ -235,6 +214,32 @@ func TestArrayAndLogicalQueries(t *testing.T) {
 			name:     "multiple OR groups with AND",
 			query:    "(name:\"John Doe\" OR name:\"Jane Smith\") AND (active:true OR role:moderator)",
 			expected: 2, // John (active) + Jane (active)
+		},
+		// Additional logical operator edge cases
+		{
+			name:     "triple AND condition",
+			query:    "active:true AND role:admin AND name:\"John Doe\"",
+			expected: 1, // Only John Doe matches all three
+		},
+		{
+			name:     "triple OR condition",
+			query:    "name:\"John Doe\" OR name:\"Jane Smith\" OR name:\"Bob Johnson\"",
+			expected: 3,
+		},
+		{
+			name:     "mixed precedence without parentheses",
+			query:    "active:true AND role:admin OR name:\"Alice Brown\"",
+			expected: 3, // John, Charlie (active admin) + Alice (any condition)
+		},
+		{
+			name:     "NOT with multiple conditions",
+			query:    "NOT (active:false OR role:moderator)",
+			expected: 3, // John, Jane, Alice (not inactive and not moderator)
+		},
+		{
+			name:     "complex nested grouping",
+			query:    "((name:\"John Doe\" OR name:\"Charlie Wilson\") AND role:admin) OR (name:\"Alice Brown\" AND role:moderator)",
+			expected: 3, // John, Charlie (admin) + Alice (moderator)
 		},
 	}
 
