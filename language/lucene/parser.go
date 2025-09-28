@@ -93,6 +93,7 @@ type ParticipleValue struct {
 	Bracketed    *string  `| @Bracketed`
 	DateTime     *string  `| @DateTime`
 	TimeString   *string  `| @TimeString`
+	Regex        *string  `| @Regex`
 }
 
 // ParticipleGroup represents parenthesized expressions
@@ -115,6 +116,8 @@ var luceneLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "String", Pattern: `"([^"\\]|\\.)*"`},
 	// Single quoted strings - must come before TextTerm
 	{Name: "SingleString", Pattern: `'([^'\\]|\\.)*'`},
+	// Regex patterns - must come before Bracketed
+	{Name: "Regex", Pattern: `/([^/\\]|\\.)*/`},
 	// Date ranges and other bracketed expressions
 	{Name: "Bracketed", Pattern: `\[[^\]]+\]`},
 	// Datetime strings with colons (ISO format, etc.)

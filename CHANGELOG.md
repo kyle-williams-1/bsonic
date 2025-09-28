@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.0-beta.1]
+
+### Added
+- **Regex pattern support** with Lucene-style syntax `field:/regex/`
+- **MongoDB regex output** with case-sensitive matching (like Lucene default)
+- **Regex with logical operators** for complex query combinations
+
+### Features Implemented
+- `name:/john/` - Basic regex patterns
+- `email:/.*@example\\.com/` - Complex regex with escaped characters
+- `phone:/\\d{3}-\\d{3}-\\d{4}/` - Regex with digit matching
+- `status:/^(active|pending|inactive)$/` - Regex with alternation
+- `name:/john/ OR email:/.*@example\\.com/` - Regex with logical operators
+
+### Technical Improvements
+- Added `Regex` field to `ParticipleValue` struct for regex pattern recognition
+- Enhanced lexer with regex token pattern `/([^/\\]|\\.)*/`
+- Added `tryParseRegex()` and `parseRegex()` methods to formatter
+- Reordered parser priority to check regex before wildcard patterns
+- Added comprehensive test coverage for regex functionality
+
+### Documentation
+- Updated README with regex examples and improved readability
+- Streamlined documentation structure and removed redundancy
+- Added regex feature to features list and query syntax sections
+
 ## [v0.5.0-beta.1]
 
 ### Added
