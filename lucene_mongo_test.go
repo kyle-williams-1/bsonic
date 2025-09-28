@@ -1,8 +1,6 @@
 package bsonic_test
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -10,98 +8,6 @@ import (
 	"github.com/kyle-williams-1/bsonic/config"
 	"go.mongodb.org/mongo-driver/bson"
 )
-
-// TestLuceneMongoIntegration tests the integration between Lucene query language and MongoDB BSON formatter
-// This test suite validates that Lucene-style queries are correctly parsed and converted to MongoDB BSON documents
-//
-// Test Structure:
-// - TestLuceneMongoBasicParsing: Basic field-value queries and constructors
-// - TestLuceneMongoLogicalOperators: AND, OR, NOT operators
-// - TestLuceneMongoDateParsing: Date range and comparison queries
-// - TestLuceneMongoNumberRangeAndComparison: Numeric range and comparison queries
-// - TestLuceneMongoParenthesesAndGrouping: Complex nested expressions
-// - TestLuceneMongoWildcardPatterns: Wildcard pattern matching
-// - TestLuceneMongoRegexPatterns: Regular expression patterns
-// - TestLuceneMongoWhitespaceHandling: Whitespace normalization
-// - TestLuceneMongoErrorConditions: Error handling and edge cases
-// - TestLuceneMongoConfigurationAndFactory: Configuration and factory functions
-// - TestLuceneMongoFreeTextSearch: Full-text search functionality
-
-// TestLuceneMongoIntegration validates the complete Lucene-to-MongoDB BSON pipeline
-func TestLuceneMongoIntegration(t *testing.T) {
-	t.Run("CompletePipeline", func(t *testing.T) {
-		// Test that a complex Lucene query is correctly converted to MongoDB BSON
-		query := `name:john AND (age:[25 TO 35] OR role:admin) AND NOT status:inactive`
-
-		parser := bsonic.New()
-		result, err := parser.Parse(query)
-		if err != nil {
-			t.Fatalf("Parse should not return error, got: %v", err)
-		}
-
-		// Verify the result is a valid MongoDB BSON document
-		if result == nil {
-			t.Fatal("Result should not be nil")
-		}
-
-		// The result should contain MongoDB-specific operators
-		// This validates that Lucene syntax was properly converted to MongoDB BSON
-		t.Logf("Lucene query: %s", query)
-		t.Logf("MongoDB BSON: %+v", result)
-	})
-
-	t.Run("MongoDBSpecificOperators", func(t *testing.T) {
-		// Test that Lucene queries produce MongoDB-specific BSON operators
-		tests := []struct {
-			name        string
-			query       string
-			expectedOp  string
-			description string
-		}{
-			{
-				name:        "TextSearch",
-				query:       "search term",
-				expectedOp:  "$text",
-				description: "Free text should produce $text search",
-			},
-			{
-				name:        "RangeQuery",
-				query:       "age:[25 TO 35]",
-				expectedOp:  "$gte",
-				description: "Range queries should produce $gte/$lte operators",
-			},
-			{
-				name:        "RegexQuery",
-				query:       "name:/john.*/",
-				expectedOp:  "$regex",
-				description: "Regex patterns should produce $regex operator",
-			},
-			{
-				name:        "LogicalAnd",
-				query:       "name:john AND (age:30 OR role:admin)",
-				expectedOp:  "$and",
-				description: "Complex AND operations should produce $and operator",
-			},
-		}
-
-		parser := bsonic.New()
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				result, err := parser.Parse(test.query)
-				if err != nil {
-					t.Fatalf("Parse should not return error for %s, got: %v", test.query, err)
-				}
-
-				// Convert result to string to check for MongoDB operators
-				resultStr := fmt.Sprintf("%+v", result)
-				if !strings.Contains(resultStr, test.expectedOp) {
-					t.Errorf("Expected MongoDB operator '%s' in result for query '%s'. Got: %s",
-						test.expectedOp, test.query, resultStr)
-				}
-			})
-		}
-	})
-}
 
 // TestLuceneMongoBasicParsing tests basic Lucene parsing with MongoDB BSON output including constructors, empty queries, and simple field-value pairs
 func TestLuceneMongoBasicParsing(t *testing.T) {
@@ -265,7 +171,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 	})
 }
 
-// TestLogicalOperators tests AND, OR, and NOT operators with various combinations
+// TestLuceneMongoLogicalOperators tests AND, OR, and NOT operators with various combinations
 func TestLuceneMongoLogicalOperators(t *testing.T) {
 	parser := bsonic.New()
 
@@ -569,7 +475,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 	})
 }
 
-// TestDateParsing tests date parsing functionality including various formats and range queries
+// TestLuceneMongoDateParsing tests date parsing functionality including various formats and range queries
 func TestLuceneMongoDateParsing(t *testing.T) {
 	parser := bsonic.New()
 
@@ -803,7 +709,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 	})
 }
 
-// TestNumberRangeAndComparison tests number range queries and comparison operators
+// TestLuceneMongoNumberRangeAndComparison tests number range queries and comparison operators
 func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 	parser := bsonic.New()
 
@@ -997,7 +903,7 @@ func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 	})
 }
 
-// TestParenthesesAndGrouping tests parentheses grouping and complex nested expressions
+// TestLuceneMongoParenthesesAndGrouping tests parentheses grouping and complex nested expressions
 func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 	parser := bsonic.New()
 
@@ -1216,7 +1122,7 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 	})
 }
 
-// TestPatternMatching tests both wildcard and regex pattern matching
+// TestLuceneMongoPatternMatching tests both wildcard and regex pattern matching
 func TestLuceneMongoPatternMatching(t *testing.T) {
 	parser := bsonic.New()
 
@@ -1360,7 +1266,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 	})
 }
 
-// TestErrorConditions tests various error conditions and edge cases
+// TestLuceneMongoErrorConditions tests various error conditions and edge cases
 func TestLuceneMongoErrorConditions(t *testing.T) {
 	parser := bsonic.New()
 
@@ -1744,7 +1650,7 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 	})
 }
 
-// TestConfigurationAndFactory tests configuration and factory functions
+// TestLuceneMongoConfigurationAndFactory tests configuration and factory functions
 func TestLuceneMongoConfigurationAndFactory(t *testing.T) {
 	// Test NewWithConfig
 	t.Run("NewWithConfig", func(t *testing.T) {
@@ -1846,6 +1752,7 @@ func TestLuceneMongoConfigurationAndFactory(t *testing.T) {
 	})
 }
 
+// TestLuceneMongoFreeTextSearch tests parsing of free text search queries
 func TestLuceneMongoFreeTextSearch(t *testing.T) {
 	parser := bsonic.New()
 
