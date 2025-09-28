@@ -9,4 +9,4 @@ type Formatter[T any] interface {
 }
 
 // Type aliases for formatter types
-type BSONFormatter = Formatter[bson.M]
+type MongoFormatter = Formatter[bson.M]

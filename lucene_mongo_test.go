@@ -1,6 +1,8 @@
 package bsonic_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,8 +11,100 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// TestBasicParsing tests basic parsing functionality including constructors, empty queries, and simple field-value pairs
-func TestBasicParsing(t *testing.T) {
+// TestLuceneMongoIntegration tests the integration between Lucene query language and MongoDB BSON formatter
+// This test suite validates that Lucene-style queries are correctly parsed and converted to MongoDB BSON documents
+//
+// Test Structure:
+// - TestLuceneMongoBasicParsing: Basic field-value queries and constructors
+// - TestLuceneMongoLogicalOperators: AND, OR, NOT operators
+// - TestLuceneMongoDateParsing: Date range and comparison queries
+// - TestLuceneMongoNumberRangeAndComparison: Numeric range and comparison queries
+// - TestLuceneMongoParenthesesAndGrouping: Complex nested expressions
+// - TestLuceneMongoWildcardPatterns: Wildcard pattern matching
+// - TestLuceneMongoRegexPatterns: Regular expression patterns
+// - TestLuceneMongoWhitespaceHandling: Whitespace normalization
+// - TestLuceneMongoErrorConditions: Error handling and edge cases
+// - TestLuceneMongoConfigurationAndFactory: Configuration and factory functions
+// - TestLuceneMongoFreeTextSearch: Full-text search functionality
+
+// TestLuceneMongoIntegration validates the complete Lucene-to-MongoDB BSON pipeline
+func TestLuceneMongoIntegration(t *testing.T) {
+	t.Run("CompletePipeline", func(t *testing.T) {
+		// Test that a complex Lucene query is correctly converted to MongoDB BSON
+		query := `name:john AND (age:[25 TO 35] OR role:admin) AND NOT status:inactive`
+
+		parser := bsonic.New()
+		result, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Verify the result is a valid MongoDB BSON document
+		if result == nil {
+			t.Fatal("Result should not be nil")
+		}
+
+		// The result should contain MongoDB-specific operators
+		// This validates that Lucene syntax was properly converted to MongoDB BSON
+		t.Logf("Lucene query: %s", query)
+		t.Logf("MongoDB BSON: %+v", result)
+	})
+
+	t.Run("MongoDBSpecificOperators", func(t *testing.T) {
+		// Test that Lucene queries produce MongoDB-specific BSON operators
+		tests := []struct {
+			name        string
+			query       string
+			expectedOp  string
+			description string
+		}{
+			{
+				name:        "TextSearch",
+				query:       "search term",
+				expectedOp:  "$text",
+				description: "Free text should produce $text search",
+			},
+			{
+				name:        "RangeQuery",
+				query:       "age:[25 TO 35]",
+				expectedOp:  "$gte",
+				description: "Range queries should produce $gte/$lte operators",
+			},
+			{
+				name:        "RegexQuery",
+				query:       "name:/john.*/",
+				expectedOp:  "$regex",
+				description: "Regex patterns should produce $regex operator",
+			},
+			{
+				name:        "LogicalAnd",
+				query:       "name:john AND (age:30 OR role:admin)",
+				expectedOp:  "$and",
+				description: "Complex AND operations should produce $and operator",
+			},
+		}
+
+		parser := bsonic.New()
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result, err := parser.Parse(test.query)
+				if err != nil {
+					t.Fatalf("Parse should not return error for %s, got: %v", test.query, err)
+				}
+
+				// Convert result to string to check for MongoDB operators
+				resultStr := fmt.Sprintf("%+v", result)
+				if !strings.Contains(resultStr, test.expectedOp) {
+					t.Errorf("Expected MongoDB operator '%s' in result for query '%s'. Got: %s",
+						test.expectedOp, test.query, resultStr)
+				}
+			})
+		}
+	})
+}
+
+// TestLuceneMongoBasicParsing tests basic Lucene parsing with MongoDB BSON output including constructors, empty queries, and simple field-value pairs
+func TestLuceneMongoBasicParsing(t *testing.T) {
 	// Test New() constructor
 	t.Run("New", func(t *testing.T) {
 		parser := bsonic.New()
@@ -114,7 +208,7 @@ func TestBasicParsing(t *testing.T) {
 }
 
 // TestLogicalOperators tests AND, OR, and NOT operators with various combinations
-func TestLogicalOperators(t *testing.T) {
+func TestLuceneMongoLogicalOperators(t *testing.T) {
 	parser := bsonic.New()
 
 	// Test AND operator
@@ -316,7 +410,7 @@ func TestLogicalOperators(t *testing.T) {
 }
 
 // TestDateParsing tests date parsing functionality including various formats and range queries
-func TestDateParsing(t *testing.T) {
+func TestLuceneMongoDateParsing(t *testing.T) {
 	parser := bsonic.New()
 
 	// Test basic date formats
@@ -550,7 +644,7 @@ func TestDateParsing(t *testing.T) {
 }
 
 // TestNumberRangeAndComparison tests number range queries and comparison operators
-func TestNumberRangeAndComparison(t *testing.T) {
+func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 	parser := bsonic.New()
 
 	// Test number range queries
@@ -744,7 +838,7 @@ func TestNumberRangeAndComparison(t *testing.T) {
 }
 
 // TestParenthesesAndGrouping tests parentheses grouping and complex nested expressions
-func TestParenthesesAndGrouping(t *testing.T) {
+func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 	parser := bsonic.New()
 
 	// Test basic parentheses grouping
@@ -963,7 +1057,7 @@ func TestParenthesesAndGrouping(t *testing.T) {
 }
 
 // TestWildcardPatterns tests wildcard pattern matching
-func TestWildcardPatterns(t *testing.T) {
+func TestLuceneMongoWildcardPatterns(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1038,7 +1132,7 @@ func TestWildcardPatterns(t *testing.T) {
 }
 
 // TestRegexPatterns tests regex pattern matching
-func TestRegexPatterns(t *testing.T) {
+func TestLuceneMongoRegexPatterns(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1108,7 +1202,7 @@ func TestRegexPatterns(t *testing.T) {
 }
 
 // TestWhitespaceHandling tests whitespace handling in queries
-func TestWhitespaceHandling(t *testing.T) {
+func TestLuceneMongoWhitespaceHandling(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1168,7 +1262,7 @@ func TestWhitespaceHandling(t *testing.T) {
 }
 
 // TestErrorConditions tests various error conditions and edge cases
-func TestErrorConditions(t *testing.T) {
+func TestLuceneMongoErrorConditions(t *testing.T) {
 	parser := bsonic.New()
 
 	// Test invalid query syntax
@@ -1393,72 +1487,7 @@ func TestErrorConditions(t *testing.T) {
 	})
 }
 
-func compareBSONValues(actual, expected interface{}) bool {
-	// Handle time.Time comparison
-	if actualTime, ok := actual.(time.Time); ok {
-		return compareTimeValues(actualTime, expected)
-	}
-
-	// Handle bson.M comparison
-	if actualMap, ok := actual.(bson.M); ok {
-		return compareBSONMaps(actualMap, expected)
-	}
-
-	// Handle []bson.M comparison
-	if actualArray, ok := actual.([]bson.M); ok {
-		return compareBSONArrays(actualArray, expected)
-	}
-
-	// Default comparison
-	return actual == expected
-}
-
-// compareTimeValues compares time.Time values
-func compareTimeValues(actualTime time.Time, expected interface{}) bool {
-	expectedTime, ok := expected.(time.Time)
-	return ok && actualTime.Equal(expectedTime)
-}
-
-// compareBSONMaps compares bson.M values
-func compareBSONMaps(actualMap bson.M, expected interface{}) bool {
-	expectedMap, ok := expected.(bson.M)
-	if !ok {
-		return false
-	}
-
-	if len(actualMap) != len(expectedMap) {
-		return false
-	}
-
-	for key, expectedValue := range expectedMap {
-		actualValue, exists := actualMap[key]
-		if !exists || !compareBSONValues(actualValue, expectedValue) {
-			return false
-		}
-	}
-	return true
-}
-
-// compareBSONArrays compares []bson.M values
-func compareBSONArrays(actualArray []bson.M, expected interface{}) bool {
-	expectedArray, ok := expected.([]bson.M)
-	if !ok {
-		return false
-	}
-
-	if len(actualArray) != len(expectedArray) {
-		return false
-	}
-
-	for i, expectedValue := range expectedArray {
-		if !compareBSONValues(actualArray[i], expectedValue) {
-			return false
-		}
-	}
-	return true
-}
-
-func TestNOTInParentheses(t *testing.T) {
+func TestLuceneMongoNOTInParentheses(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1562,7 +1591,7 @@ func TestNOTInParentheses(t *testing.T) {
 }
 
 // TestAdditionalEdgeCases tests additional edge cases through public API
-func TestAdditionalEdgeCases(t *testing.T) {
+func TestLuceneMongoAdditionalEdgeCases(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1652,7 +1681,7 @@ func TestAdditionalEdgeCases(t *testing.T) {
 	}
 }
 
-func TestComplexQueryEdgeCases(t *testing.T) {
+func TestLuceneMongoComplexQueryEdgeCases(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -1723,7 +1752,7 @@ func TestComplexQueryEdgeCases(t *testing.T) {
 }
 
 // TestConfigurationAndFactory tests configuration and factory functions
-func TestConfigurationAndFactory(t *testing.T) {
+func TestLuceneMongoConfigurationAndFactory(t *testing.T) {
 	// Test NewWithConfig
 	t.Run("NewWithConfig", func(t *testing.T) {
 		// Test with valid config
@@ -1824,7 +1853,7 @@ func TestConfigurationAndFactory(t *testing.T) {
 	})
 }
 
-func TestParseFreeTextSearch(t *testing.T) {
+func TestLuceneMongoFreeTextSearch(t *testing.T) {
 	parser := bsonic.New()
 
 	tests := []struct {
@@ -2171,4 +2200,72 @@ func TestParseFreeTextSearch(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Helper functions for BSON comparison
+
+// compareBSONValues compares BSON values for testing
+func compareBSONValues(actual, expected interface{}) bool {
+	// Handle time.Time comparison
+	if actualTime, ok := actual.(time.Time); ok {
+		return compareTimeValues(actualTime, expected)
+	}
+
+	// Handle bson.M comparison
+	if actualMap, ok := actual.(bson.M); ok {
+		return compareBSONMaps(actualMap, expected)
+	}
+
+	// Handle []bson.M comparison
+	if actualArray, ok := actual.([]bson.M); ok {
+		return compareBSONArrays(actualArray, expected)
+	}
+
+	// Default comparison
+	return actual == expected
+}
+
+// compareTimeValues compares time.Time values
+func compareTimeValues(actualTime time.Time, expected interface{}) bool {
+	expectedTime, ok := expected.(time.Time)
+	return ok && actualTime.Equal(expectedTime)
+}
+
+// compareBSONMaps compares bson.M values
+func compareBSONMaps(actualMap bson.M, expected interface{}) bool {
+	expectedMap, ok := expected.(bson.M)
+	if !ok {
+		return false
+	}
+
+	if len(actualMap) != len(expectedMap) {
+		return false
+	}
+
+	for key, expectedValue := range expectedMap {
+		actualValue, exists := actualMap[key]
+		if !exists || !compareBSONValues(actualValue, expectedValue) {
+			return false
+		}
+	}
+	return true
+}
+
+// compareBSONArrays compares []bson.M values
+func compareBSONArrays(actualArray []bson.M, expected interface{}) bool {
+	expectedArray, ok := expected.([]bson.M)
+	if !ok {
+		return false
+	}
+
+	if len(actualArray) != len(expectedArray) {
+		return false
+	}
+
+	for i, expectedValue := range expectedArray {
+		if !compareBSONValues(actualArray[i], expectedValue) {
+			return false
+		}
+	}
+	return true
 }

@@ -13,8 +13,8 @@ const (
 type FormatterType string
 
 const (
-	// FormatterBSON represents MongoDB BSON output format
-	FormatterBSON FormatterType = "bson"
+	// FormatterMongo represents MongoDB BSON output format
+	FormatterMongo FormatterType = "mongo"
 )
 
 // Config represents the configuration for a parser.
@@ -23,11 +23,11 @@ type Config struct {
 	Formatter FormatterType
 }
 
-// Default returns the default configuration with Lucene language and BSON formatter.
+// Default returns the default configuration with Lucene language and MongoDB formatter.
 func Default() *Config {
 	return &Config{
 		Language:  LanguageLucene,
-		Formatter: FormatterBSON,
+		Formatter: FormatterMongo,
 	}
 }
 

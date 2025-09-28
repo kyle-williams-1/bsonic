@@ -1,5 +1,5 @@
-// Package bson provides BSON formatting functionality for query results.
-package bson
+// Package mongo provides MongoDB BSON formatting functionality for query results.
+package mongo
 
 import (
 	"errors"
