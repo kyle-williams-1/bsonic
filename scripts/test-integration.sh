@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-COMPOSE_FILE="docker-compose.yml"
+COMPOSE_FILE="tests/lucene-mongo/docker-compose.yml"
 TEST_TIMEOUT=${TEST_TIMEOUT:-"30s"}
 MONGODB_URI=${MONGODB_URI:-"mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin"}
 
@@ -106,7 +106,7 @@ run_tests() {
     # Run tests with timeout (macOS compatible)
     if command -v timeout > /dev/null 2>&1; then
         # Use timeout command if available
-        if timeout $TEST_TIMEOUT go test -tags=integration -v ./integration/...; then
+        if timeout $TEST_TIMEOUT go test -tags=integration -v ./tests/lucene-mongo/...; then
             log_success "All integration tests passed!"
             return 0
         else
@@ -116,7 +116,7 @@ run_tests() {
     else
         # Fallback for macOS without timeout command
         log_warning "timeout command not found, running tests without timeout"
-        if go test -tags=integration -v ./integration/...; then
+        if go test -tags=integration -v ./tests/lucene-mongo/...; then
             log_success "All integration tests passed!"
             return 0
         else
