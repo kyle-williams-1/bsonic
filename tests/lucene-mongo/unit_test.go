@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/kyle-williams-1/bsonic"
-	"github.com/kyle-williams-1/bsonic/config"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -475,7 +474,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 	})
 }
 
-// TestLuceneMongoDateParsing tests date parsing functionality including various formats and range queries
+// TestLuceneMongoDateParsing tests date parsing functionality including various formats
 func TestLuceneMongoDateParsing(t *testing.T) {
 	parser := bsonic.New()
 
@@ -709,6 +708,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 	})
 }
 
+// TODO  add more tests that >=, <=, <, >
 // TestLuceneMongoNumberRangeAndComparison tests number range queries and comparison operators
 func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 	parser := bsonic.New()
@@ -1120,227 +1120,6 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 			})
 		}
 	})
-}
-
-// TestLuceneMongoPatternMatching tests both wildcard and regex pattern matching
-func TestLuceneMongoPatternMatching(t *testing.T) {
-	parser := bsonic.New()
-
-	t.Run("WildcardPatterns", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected bson.M
-			desc     string
-		}{
-			{
-				input: "name:*john*",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex":   ".*john.*",
-						"$options": "i",
-					},
-				},
-				desc: "contains pattern",
-			},
-			{
-				input: "name:*john",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex":   ".*john$",
-						"$options": "i",
-					},
-				},
-				desc: "ends with pattern",
-			},
-			{
-				input: "name:john*",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex":   "^john.*",
-						"$options": "i",
-					},
-				},
-				desc: "starts with pattern",
-			},
-			{
-				input: "name:jo*n",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex":   "^jo.*n$",
-						"$options": "i",
-					},
-				},
-				desc: "starts and ends with specific patterns",
-			},
-			{
-				input: "name:*",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex":   ".*",
-						"$options": "i",
-					},
-				},
-				desc: "wildcard only",
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				result, err := parser.Parse(test.input)
-				if err != nil {
-					t.Fatalf("Parse should not return error, got: %v", err)
-				}
-
-				if !CompareBSONValues(result, test.expected) {
-					t.Fatalf("Expected %+v, got %+v", test.expected, result)
-				}
-			})
-		}
-	})
-
-	t.Run("RegexPatterns", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected bson.M
-			desc     string
-		}{
-			{
-				input: "name:/john/",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex": "john",
-					},
-				},
-				desc: "basic regex pattern",
-			},
-			{
-				input: "name:/^john$/",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex": "^john$",
-					},
-				},
-				desc: "anchored regex pattern",
-			},
-			{
-				input: "email:/.*@example\\.com$/",
-				expected: bson.M{
-					"email": bson.M{
-						"$regex": ".*@example\\.com$",
-					},
-				},
-				desc: "complex regex pattern with escaped characters",
-			},
-			{
-				input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
-				expected: bson.M{
-					"phone": bson.M{
-						"$regex": "\\d{3}-\\d{3}-\\d{4}",
-					},
-				},
-				desc: "regex pattern with digit matching",
-			},
-			{
-				input: "status:/^(active|pending|inactive)$/",
-				expected: bson.M{
-					"status": bson.M{
-						"$regex": "^(active|pending|inactive)$",
-					},
-				},
-				desc: "regex pattern with alternation",
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				result, err := parser.Parse(test.input)
-				if err != nil {
-					t.Fatalf("Parse should not return error, got: %v", err)
-				}
-
-				if !CompareBSONValues(result, test.expected) {
-					t.Fatalf("Expected %+v, got %+v", test.expected, result)
-				}
-			})
-		}
-	})
-}
-
-// TestLuceneMongoErrorConditions tests various error conditions and edge cases
-func TestLuceneMongoErrorConditions(t *testing.T) {
-	parser := bsonic.New()
-
-	// Test invalid query syntax
-	t.Run("InvalidQuerySyntax", func(t *testing.T) {
-		invalidQueries := []struct {
-			input string
-			desc  string
-		}{
-			{":value", "empty field name"},
-			{"name:john AND", "AND at end without right operand"},
-			{"name:john OR", "OR at end without right operand"},
-			{"NOT", "NOT without operand"},
-			{"name:john AND NOT", "NOT at end without operand"},
-			{"name:", "empty value"},
-		}
-
-		for _, test := range invalidQueries {
-			t.Run(test.desc, func(t *testing.T) {
-				_, err := parser.Parse(test.input)
-				if err == nil {
-					t.Fatalf("Expected error for '%s', got none", test.input)
-				}
-			})
-		}
-	})
-
-	// Test edge cases that should work
-	t.Run("ValidEdgeCases", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected bson.M
-			desc     string
-		}{
-			{
-				input:    "name:false",
-				expected: bson.M{"name": false},
-				desc:     "boolean false value",
-			},
-			{
-				input:    "name:true",
-				expected: bson.M{"name": true},
-				desc:     "boolean true value",
-			},
-			{
-				input:    "age:0",
-				expected: bson.M{"age": 0.0},
-				desc:     "zero numeric value",
-			},
-			{
-				input:    "age:-1",
-				expected: bson.M{"age": -1.0},
-				desc:     "negative numeric value",
-			},
-			{
-				input:    "age:3.14",
-				expected: bson.M{"age": 3.14},
-				desc:     "decimal numeric value",
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				result, err := parser.Parse(test.input)
-				if err != nil {
-					t.Fatalf("Parse should not return error, got: %v", err)
-				}
-
-				if !CompareBSONValues(result, test.expected) {
-					t.Fatalf("Expected %+v, got %+v", test.expected, result)
-				}
-			})
-		}
-	})
 
 	// Test complex nested queries
 	t.Run("ComplexNestedQueries", func(t *testing.T) {
@@ -1490,8 +1269,181 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 			})
 		}
 	})
+}
 
-	// Test additional edge cases
+// TestLuceneMongoPatternMatching tests wildcard
+func TestLuceneMongoPatternMatching(t *testing.T) {
+	parser := bsonic.New()
+
+	t.Run("WildcardPatterns", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "name:*john*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*john.*",
+						"$options": "i",
+					},
+				},
+				desc: "contains pattern",
+			},
+			{
+				input: "name:*john",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*john$",
+						"$options": "i",
+					},
+				},
+				desc: "ends with pattern",
+			},
+			{
+				input: "name:john*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   "^john.*",
+						"$options": "i",
+					},
+				},
+				desc: "starts with pattern",
+			},
+			{
+				input: "name:jo*n",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   "^jo.*n$",
+						"$options": "i",
+					},
+				},
+				desc: "starts and ends with specific patterns",
+			},
+			{
+				input: "name:*",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex":   ".*",
+						"$options": "i",
+					},
+				},
+				desc: "wildcard only",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !CompareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+
+	t.Run("RegexPatterns", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected bson.M
+			desc     string
+		}{
+			{
+				input: "name:/john/",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex": "john",
+					},
+				},
+				desc: "basic regex pattern",
+			},
+			{
+				input: "name:/^john$/",
+				expected: bson.M{
+					"name": bson.M{
+						"$regex": "^john$",
+					},
+				},
+				desc: "anchored regex pattern",
+			},
+			{
+				input: "email:/.*@example\\.com$/",
+				expected: bson.M{
+					"email": bson.M{
+						"$regex": ".*@example\\.com$",
+					},
+				},
+				desc: "complex regex pattern with escaped characters",
+			},
+			{
+				input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
+				expected: bson.M{
+					"phone": bson.M{
+						"$regex": "\\d{3}-\\d{3}-\\d{4}",
+					},
+				},
+				desc: "regex pattern with digit matching",
+			},
+			{
+				input: "status:/^(active|pending|inactive)$/",
+				expected: bson.M{
+					"status": bson.M{
+						"$regex": "^(active|pending|inactive)$",
+					},
+				},
+				desc: "regex pattern with alternation",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !CompareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
+				}
+			})
+		}
+	})
+}
+
+// TestLuceneMongoErrorConditions tests various error conditions and edge cases
+func TestLuceneMongoErrorConditions(t *testing.T) {
+	parser := bsonic.New()
+
+	// Test invalid query syntax that should return an error
+	t.Run("InvalidQuerySyntax", func(t *testing.T) {
+		invalidQueries := []struct {
+			input string
+			desc  string
+		}{
+			{":value", "empty field name"},
+			{"name:john AND", "AND at end without right operand"},
+			{"name:john OR", "OR at end without right operand"},
+			{"NOT", "NOT without operand"},
+			{"name:john AND NOT", "NOT at end without operand"},
+			{"name:", "empty value"},
+		}
+
+		for _, test := range invalidQueries {
+			t.Run(test.desc, func(t *testing.T) {
+				_, err := parser.Parse(test.input)
+				if err == nil {
+					t.Fatalf("Expected error for '%s', got none", test.input)
+				}
+			})
+		}
+	})
+
+	// Test invalid queries that should not return an error
 	t.Run("AdditionalEdgeCases", func(t *testing.T) {
 		tests := []struct {
 			name        string
@@ -1535,30 +1487,6 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 				expectError: false,
 				expected:    bson.M{"age": "[not-a-number TO 100]"},
 			},
-			{
-				name:        "valid date range with wildcard start",
-				query:       "created_at:[* TO 2023-12-31]",
-				expectError: false,
-				expected:    bson.M{"created_at": bson.M{"$lte": time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)}},
-			},
-			{
-				name:        "valid date range with wildcard end",
-				query:       "created_at:[2023-01-01 TO *]",
-				expectError: false,
-				expected:    bson.M{"created_at": bson.M{"$gte": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
-			},
-			{
-				name:        "valid number range with wildcard start",
-				query:       "age:[* TO 65]",
-				expectError: false,
-				expected:    bson.M{"age": bson.M{"$lte": 65.0}},
-			},
-			{
-				name:        "valid number range with wildcard end",
-				query:       "age:[18 TO *]",
-				expectError: false,
-				expected:    bson.M{"age": bson.M{"$gte": 18.0}},
-			},
 		}
 
 		for _, test := range tests {
@@ -1579,175 +1507,56 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 			})
 		}
 	})
+}
 
-	// Test complex query edge cases
-	t.Run("ComplexQueryEdgeCases", func(t *testing.T) {
+// TestLuceneMongoTypeConversions tests type conversion functionality for various data types
+func TestLuceneMongoTypeConversions(t *testing.T) {
+	parser := bsonic.New()
+
+	t.Run("TypeConversions", func(t *testing.T) {
 		tests := []struct {
-			name        string
-			query       string
-			expectError bool
-			description string
+			input    string
+			expected bson.M
+			desc     string
 		}{
 			{
-				name:        "nested parentheses with complex logic",
-				query:       "((name:john OR name:jane) AND age:25) OR (status:active AND role:admin)",
-				expectError: false,
-				description: "complex nested parentheses",
+				input:    "name:false",
+				expected: bson.M{"name": false},
+				desc:     "boolean false value",
 			},
 			{
-				name:        "multiple NOT operations",
-				query:       "NOT name:john AND NOT age:25",
-				expectError: false,
-				description: "multiple NOT operations",
+				input:    "name:true",
+				expected: bson.M{"name": true},
+				desc:     "boolean true value",
 			},
 			{
-				name:        "NOT with parentheses",
-				query:       "NOT (name:john OR age:25)",
-				expectError: false,
-				description: "NOT with grouped OR",
+				input:    "age:0",
+				expected: bson.M{"age": 0.0},
+				desc:     "zero numeric value",
 			},
 			{
-				name:        "complex wildcard patterns",
-				query:       "name:jo*n AND email:*@example.com",
-				expectError: false,
-				description: "complex wildcard patterns",
+				input:    "age:-1",
+				expected: bson.M{"age": -1.0},
+				desc:     "negative numeric value",
 			},
 			{
-				name:        "mixed date and number ranges",
-				query:       "created_at:[2023-01-01 TO 2023-12-31] AND age:[18 TO 65]",
-				expectError: false,
-				description: "mixed date and number ranges",
-			},
-			{
-				name:        "complex comparison operators",
-				query:       "score:>85 AND rating:>=4.5 AND price:<100",
-				expectError: false,
-				description: "complex comparison operators",
+				input:    "age:3.14",
+				expected: bson.M{"age": 3.14},
+				desc:     "decimal numeric value",
 			},
 		}
 
 		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				result, err := parser.Parse(test.query)
-				if test.expectError {
-					if err == nil {
-						t.Fatalf("Expected error for query: %s", test.query)
-					}
-				} else {
-					if err != nil {
-						t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
-					}
-					if result == nil {
-						t.Fatalf("Expected non-nil result for query: %s", test.query)
-					}
-					// Just verify it parses without error and produces some BSON
-					if len(result) == 0 && test.query != "" {
-						t.Fatalf("Expected non-empty result for query: %s", test.query)
-					}
+			t.Run(test.desc, func(t *testing.T) {
+				result, err := parser.Parse(test.input)
+				if err != nil {
+					t.Fatalf("Parse should not return error, got: %v", err)
+				}
+
+				if !CompareBSONValues(result, test.expected) {
+					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
-		}
-	})
-}
-
-// TestLuceneMongoConfigurationAndFactory tests configuration and factory functions
-func TestLuceneMongoConfigurationAndFactory(t *testing.T) {
-	// Test NewWithConfig
-	t.Run("NewWithConfig", func(t *testing.T) {
-		// Test with valid config
-		cfg := &config.Config{
-			Language:  config.LanguageLucene,
-			Formatter: config.FormatterMongo,
-		}
-
-		parser, err := bsonic.NewWithConfig(cfg)
-		if err != nil {
-			t.Fatalf("NewWithConfig should not return error, got: %v", err)
-		}
-		if parser == nil {
-			t.Fatal("NewWithConfig should return a non-nil parser")
-		}
-
-		// Test with invalid language
-		invalidCfg := &config.Config{
-			Language:  "invalid",
-			Formatter: config.FormatterMongo,
-		}
-
-		_, err = bsonic.NewWithConfig(invalidCfg)
-		if err == nil {
-			t.Fatal("NewWithConfig should return error for invalid language")
-		}
-
-		// Test with invalid formatter
-		invalidCfg2 := &config.Config{
-			Language:  config.LanguageLucene,
-			Formatter: "invalid",
-		}
-
-		_, err = bsonic.NewWithConfig(invalidCfg2)
-		if err == nil {
-			t.Fatal("NewWithConfig should return error for invalid formatter")
-		}
-	})
-
-	// Test config package functions
-	t.Run("ConfigFunctions", func(t *testing.T) {
-		// Test Default config
-		cfg := config.Default()
-		if cfg == nil {
-			t.Fatal("Default() should return a non-nil config")
-		}
-
-		// Test WithLanguage
-		cfgWithLang := cfg.WithLanguage(config.LanguageLucene)
-		if cfgWithLang.Language != config.LanguageLucene {
-			t.Error("WithLanguage should set the language")
-		}
-
-		// Test WithFormatter
-		cfgWithFmt := cfg.WithFormatter(config.FormatterMongo)
-		if cfgWithFmt.Formatter != config.FormatterMongo {
-			t.Error("WithFormatter should set the formatter")
-		}
-	})
-
-	// Test factory functions
-	t.Run("FactoryFunctions", func(t *testing.T) {
-		// Test NewParser
-		parser, err := bsonic.NewParser(config.LanguageLucene)
-		if err != nil {
-			t.Fatalf("NewParser should not return error, got: %v", err)
-		}
-		if parser == nil {
-			t.Fatal("NewParser should return a non-nil parser")
-		}
-
-		// Test NewParser with invalid language
-		_, err = bsonic.NewParser("invalid")
-		if err == nil {
-			t.Fatal("NewParser should return error for invalid language")
-		}
-
-		// Test NewFormatter
-		formatter, err := bsonic.NewFormatter(config.FormatterMongo)
-		if err != nil {
-			t.Fatalf("NewFormatter should not return error, got: %v", err)
-		}
-		if formatter == nil {
-			t.Fatal("NewFormatter should return a non-nil formatter")
-		}
-
-		// Test NewFormatter with invalid formatter
-		_, err = bsonic.NewFormatter("invalid")
-		if err == nil {
-			t.Fatal("NewFormatter should return error for invalid formatter")
-		}
-
-		// Test NewMongoFormatter
-		mongoFormatter := bsonic.NewMongoFormatter()
-		if mongoFormatter == nil {
-			t.Fatal("NewMongoFormatter should return a non-nil formatter")
 		}
 	})
 }

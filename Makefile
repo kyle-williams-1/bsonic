@@ -49,7 +49,7 @@ test-all: test test-integration
 coverage:
 	@echo "Generating test coverage report..."
 	@echo "Running unit tests with coverage for all packages..."
-	go test -coverprofile=coverage.out -covermode=atomic ./...
+	go test -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
