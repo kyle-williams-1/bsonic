@@ -36,7 +36,7 @@ jobs:
     - name: Start MongoDB with Docker Compose
       run: |
         # Start MongoDB with seed data
-        docker compose up -d
+        docker compose -f tests/lucene-mongo/docker-compose.yml up -d
         
         # Wait for MongoDB to be ready and verify data seeding
         echo "Waiting for MongoDB to be ready..."
@@ -47,7 +47,7 @@ jobs:
 
     - name: Run integration tests with coverage
       run: |
-        go test -tags=integration -v -coverprofile=integration_coverage.out ./tests/lucene-mongo/...
+        go test -tags=integration -v -coverprofile=integration_coverage.out -covermode=atomic -coverpkg=./... ./tests/lucene-mongo/...
         go tool cover -html=integration_coverage.out -o integration_coverage.html
       env:
         MONGODB_URI: mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin
@@ -65,4 +65,4 @@ jobs:
       if: always()
       run: |
         # Stop and remove containers
-        docker compose down -v
+        docker compose -f tests/lucene-mongo/docker-compose.yml down -v
