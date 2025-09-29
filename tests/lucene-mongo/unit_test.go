@@ -708,7 +708,6 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 	})
 }
 
-// TODO  add more tests that >=, <=, <, >
 // TestLuceneMongoNumberRangeAndComparison tests number range queries and comparison operators
 func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 	parser := bsonic.New()
