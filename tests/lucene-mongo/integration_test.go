@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package lucene_mongo_test
 
 import (
 	"context"

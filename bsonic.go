@@ -2,15 +2,17 @@
 package bsonic
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/kyle-williams-1/bsonic/config"
 	"github.com/kyle-williams-1/bsonic/formatter"
-	mongoformatter "github.com/kyle-williams-1/bsonic/formatter/mongo"
 	"github.com/kyle-williams-1/bsonic/language"
-	"github.com/kyle-williams-1/bsonic/language/lucene"
+	"github.com/kyle-williams-1/bsonic/registry"
 	"go.mongodb.org/mongo-driver/bson"
+
+	// Import packages to trigger their init functions
+	_ "github.com/kyle-williams-1/bsonic/formatter/mongo"
+	_ "github.com/kyle-williams-1/bsonic/language/lucene"
 )
 
 // Parser represents a query parser for the selected language and MongoDB formatter.
@@ -23,29 +25,20 @@ type Parser struct {
 	formatter formatter.Formatter[bson.M]
 }
 
-// NewParser creates a parser based on the language type.
+// NewParser creates a parser based on the language type using the registry.
 func NewParser(langType config.LanguageType) (language.Parser, error) {
-	switch langType {
-	case config.LanguageLucene:
-		return lucene.New(), nil
-	default:
-		return nil, fmt.Errorf("unsupported language type: %s", langType)
-	}
+	return registry.DefaultRegistry.Languages.GetLanguage(langType)
 }
 
-// NewFormatter creates a formatter based on the formatter type.
+// NewFormatter creates a formatter based on the formatter type using the registry.
 func NewFormatter(formatterType config.FormatterType) (formatter.Formatter[bson.M], error) {
-	switch formatterType {
-	case config.FormatterMongo:
-		return mongoformatter.New(), nil
-	default:
-		return nil, fmt.Errorf("unsupported formatter type: %s", formatterType)
-	}
+	return registry.DefaultRegistry.Formatters.GetFormatter(formatterType)
 }
 
 // NewMongoFormatter creates a MongoDB BSON formatter with proper typing.
 func NewMongoFormatter() formatter.Formatter[bson.M] {
-	return mongoformatter.New()
+	formatter, _ := NewFormatter(config.FormatterMongo)
+	return formatter
 }
 
 // New creates a new parser instance with default configuration.
@@ -63,6 +56,11 @@ func New() *Parser {
 
 // NewWithConfig creates a new parser with custom configuration.
 func NewWithConfig(cfg *config.Config) (*Parser, error) {
+	// Validate the configuration using the registry
+	if err := registry.DefaultRegistry.ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	languageParser, err := NewParser(cfg.Language)
 	if err != nil {
 		return nil, err

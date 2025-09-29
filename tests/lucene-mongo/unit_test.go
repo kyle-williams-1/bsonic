@@ -1,4 +1,4 @@
-package bsonic_test
+package lucene_mongo_test
 
 import (
 	"testing"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/kyle-williams-1/bsonic"
 	"github.com/kyle-williams-1/bsonic/config"
+	"github.com/kyle-williams-1/bsonic/tests/shared/helpers"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -27,7 +28,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		}
 
 		expected := bson.M{"name": "john"}
-		if !compareBSONValues(query, expected) {
+		if !helpers.CompareBSONValues(query, expected) {
 			t.Fatalf("Expected %+v, got %+v", expected, query)
 		}
 	})
@@ -85,7 +86,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -107,7 +108,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 			},
 		}
 
-		if !compareBSONValues(query, expected) {
+		if !helpers.CompareBSONValues(query, expected) {
 			t.Fatalf("Expected %+v, got %+v", expected, query)
 		}
 	})
@@ -163,7 +164,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -206,7 +207,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -269,7 +270,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -312,7 +313,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -365,7 +366,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -467,7 +468,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					t.Fatalf("Parse failed for query %q: %v", test.query, err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
 				}
 			})
@@ -547,7 +548,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 					t.Fatalf("Expected field %s not found", field)
 				}
 
-				if !compareBSONValues(actualValue, test.expected[field]) {
+				if !helpers.CompareBSONValues(actualValue, test.expected[field]) {
 					t.Fatalf("Expected %s=%v, got %s=%v", field, test.expected[field], field, actualValue)
 				}
 			})
@@ -598,7 +599,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -657,7 +658,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -701,7 +702,7 @@ func TestLuceneMongoDateParsing(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -767,7 +768,7 @@ func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -826,7 +827,7 @@ func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -895,7 +896,7 @@ func TestLuceneMongoNumberRangeAndComparison(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -958,7 +959,7 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1008,7 +1009,7 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1091,7 +1092,7 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1191,7 +1192,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1258,7 +1259,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1335,7 +1336,7 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1420,7 +1421,7 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1484,7 +1485,7 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 					t.Fatalf("Parse should not return error, got: %v", err)
 				}
 
-				if !compareBSONValues(result, test.expected) {
+				if !helpers.CompareBSONValues(result, test.expected) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
@@ -1572,7 +1573,7 @@ func TestLuceneMongoErrorConditions(t *testing.T) {
 					if err != nil {
 						t.Fatalf("Unexpected error for query: %s, got: %v", test.query, err)
 					}
-					if !compareBSONValues(result, test.expected) {
+					if !helpers.CompareBSONValues(result, test.expected) {
 						t.Fatalf("Query: %s\nExpected: %+v\nGot: %+v", test.query, test.expected, result)
 					}
 				}
