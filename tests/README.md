@@ -55,7 +55,7 @@ docker-compose down
 make test-all
 
 # Run only unit tests
-make test-unit
+make test
 
 # Run only integration tests
 make test-integration

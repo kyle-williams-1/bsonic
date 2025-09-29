@@ -136,7 +136,7 @@ run_tests_with_coverage() {
     # Run tests with coverage (macOS compatible)
     if command -v timeout > /dev/null 2>&1; then
         # Use timeout command if available
-        if timeout $TEST_TIMEOUT go test -tags=integration -v -coverprofile=integration_coverage.out ./integration/...; then
+        if timeout $TEST_TIMEOUT go test -tags=integration -v -coverprofile=integration_coverage.out ./tests/lucene-mongo/...; then
             log_success "Integration tests with coverage completed!"
             
             # Generate coverage report
@@ -153,7 +153,7 @@ run_tests_with_coverage() {
     else
         # Fallback for macOS without timeout command
         log_warning "timeout command not found, running tests without timeout"
-        if go test -tags=integration -v -coverprofile=integration_coverage.out ./integration/...; then
+        if go test -tags=integration -v -coverprofile=integration_coverage.out ./tests/lucene-mongo/...; then
             log_success "Integration tests with coverage completed!"
             
             # Generate coverage report

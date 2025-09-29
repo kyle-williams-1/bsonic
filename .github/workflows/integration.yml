@@ -47,7 +47,7 @@ jobs:
 
     - name: Run integration tests with coverage
       run: |
-        go test -tags=integration -v -coverprofile=integration_coverage.out ./integration/...
+        go test -tags=integration -v -coverprofile=integration_coverage.out ./tests/lucene-mongo/...
         go tool cover -html=integration_coverage.out -o integration_coverage.html
       env:
         MONGODB_URI: mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin
