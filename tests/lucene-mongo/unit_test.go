@@ -1346,72 +1346,76 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 		}
 	})
 
-	t.Run("RegexPatterns", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected bson.M
-			desc     string
-		}{
-			{
-				input: "name:/john/",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex": "john",
-					},
-				},
-				desc: "basic regex pattern",
-			},
-			{
-				input: "name:/^john$/",
-				expected: bson.M{
-					"name": bson.M{
-						"$regex": "^john$",
-					},
-				},
-				desc: "anchored regex pattern",
-			},
-			{
-				input: "email:/.*@example\\.com$/",
-				expected: bson.M{
-					"email": bson.M{
-						"$regex": ".*@example\\.com$",
-					},
-				},
-				desc: "complex regex pattern with escaped characters",
-			},
-			{
-				input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
-				expected: bson.M{
-					"phone": bson.M{
-						"$regex": "\\d{3}-\\d{3}-\\d{4}",
-					},
-				},
-				desc: "regex pattern with digit matching",
-			},
-			{
-				input: "status:/^(active|pending|inactive)$/",
-				expected: bson.M{
-					"status": bson.M{
-						"$regex": "^(active|pending|inactive)$",
-					},
-				},
-				desc: "regex pattern with alternation",
-			},
-		}
+}
 
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				result, err := parser.Parse(test.input)
-				if err != nil {
-					t.Fatalf("Parse should not return error, got: %v", err)
-				}
+// TestLuceneMongoRegexPatterns tests regex pattern matching functionality
+func TestLuceneMongoRegexPatterns(t *testing.T) {
+	parser := bsonic.New()
 
-				if !CompareBSONValues(result, test.expected) {
-					t.Fatalf("Expected %+v, got %+v", test.expected, result)
-				}
-			})
-		}
-	})
+	tests := []struct {
+		input    string
+		expected bson.M
+		desc     string
+	}{
+		{
+			input: "name:/john/",
+			expected: bson.M{
+				"name": bson.M{
+					"$regex": "john",
+				},
+			},
+			desc: "basic regex pattern",
+		},
+		{
+			input: "name:/^john$/",
+			expected: bson.M{
+				"name": bson.M{
+					"$regex": "^john$",
+				},
+			},
+			desc: "anchored regex pattern",
+		},
+		{
+			input: "email:/.*@example\\.com$/",
+			expected: bson.M{
+				"email": bson.M{
+					"$regex": ".*@example\\.com$",
+				},
+			},
+			desc: "complex regex pattern with escaped characters",
+		},
+		{
+			input: "phone:/\\d{3}-\\d{3}-\\d{4}/",
+			expected: bson.M{
+				"phone": bson.M{
+					"$regex": "\\d{3}-\\d{3}-\\d{4}",
+				},
+			},
+			desc: "regex pattern with digit matching",
+		},
+		{
+			input: "status:/^(active|pending|inactive)$/",
+			expected: bson.M{
+				"status": bson.M{
+					"$regex": "^(active|pending|inactive)$",
+				},
+			},
+			desc: "regex pattern with alternation",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := parser.Parse(test.input)
+			if err != nil {
+				t.Fatalf("Parse should not return error, got: %v", err)
+			}
+
+			if !CompareBSONValues(result, test.expected) {
+				t.Fatalf("Expected %+v, got %+v", test.expected, result)
+			}
+		})
+	}
 }
 
 // TestLuceneMongoErrorConditions tests various error conditions and edge cases
