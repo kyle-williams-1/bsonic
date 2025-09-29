@@ -1,5 +1,5 @@
-// Package helpers provides shared test utilities for BSON comparison and testing.
-package helpers
+// Package lucene_mongo_test provides test utilities for BSON comparison and testing.
+package lucene_mongo_test
 
 import (
 	"time"

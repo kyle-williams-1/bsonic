@@ -152,7 +152,7 @@ vet:
 
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f coverage.out coverage.html integration_coverage.out integration_coverage.html
+	rm -f coverage.out coverage.html integration_coverage.out integration_coverage.html coverage_full.out coverage_full.html integration_coverage_full.out integration_coverage_full.html
 	@echo "Build artifacts cleaned"
 
 # CI/CD targets

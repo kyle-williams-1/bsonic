@@ -45,7 +45,7 @@ func NewLanguageRegistry() *LanguageRegistry {
 	registry := &LanguageRegistry{
 		languages: make(map[config.LanguageType]LanguageFactory),
 	}
-	
+
 	// Register default languages
 	// Note: This will be populated by the init() functions in language packages
 	return registry
@@ -56,7 +56,7 @@ func NewFormatterRegistry() *FormatterRegistry {
 	registry := &FormatterRegistry{
 		formatters: make(map[config.FormatterType]FormatterFactory),
 	}
-	
+
 	// Register default formatters
 	// Note: This will be populated by the init() functions in formatter packages
 	return registry
@@ -114,12 +114,12 @@ func (r *Registry) ValidateConfig(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("invalid language: %w", err)
 	}
-	
+
 	_, err = r.Formatters.GetFormatter(cfg.Formatter)
 	if err != nil {
 		return fmt.Errorf("invalid formatter: %w", err)
 	}
-	
+
 	return nil
 }
 
