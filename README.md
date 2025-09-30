@@ -87,7 +87,7 @@ parser := bsonic.New()
 // Custom configuration
 cfg := config.Default().
     WithLanguage(config.LanguageLucene).
-    WithFormatter(config.FormatterBSON)
+    WithFormatter(config.FormatterMongo)
 parser, _ := bsonic.NewWithConfig(cfg)
 ```
 
@@ -97,7 +97,7 @@ parser, _ := bsonic.NewWithConfig(cfg)
 bsonic/
 ├── config/           # Configuration types
 ├── language/lucene/  # Lucene query parser
-├── formatter/bson/   # BSON output formatter
+├── formatter/mongo/  # MongoDB BSON output formatter
 └── bsonic.go         # Main API
 ```
 

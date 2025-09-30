@@ -1,5 +1,5 @@
-// Package bson provides BSON formatting functionality for query results.
-package bson
+// Package mongo provides MongoDB BSON formatting functionality for query results.
+package mongo
 
 import (
 	"errors"
@@ -12,16 +12,16 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Formatter represents a BSON formatter for query results.
-type Formatter struct{}
+// MongoFormatter represents a MongoDB BSON formatter for query results.
+type MongoFormatter struct{}
 
-// New creates a new BSON formatter instance.
-func New() *Formatter {
-	return &Formatter{}
+// New creates a new MongoDB BSON formatter instance.
+func New() *MongoFormatter {
+	return &MongoFormatter{}
 }
 
 // Format converts a parsed query AST into a BSON document.
-func (f *Formatter) Format(ast interface{}) (bson.M, error) {
+func (f *MongoFormatter) Format(ast interface{}) (bson.M, error) {
 	// Type assert to the ParticipleQuery AST type from the Lucene parser
 	participleQuery, ok := ast.(*lucene.ParticipleQuery)
 	if !ok {
@@ -35,7 +35,7 @@ func (f *Formatter) Format(ast interface{}) (bson.M, error) {
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
-func (f *Formatter) parseValue(valueStr string) (interface{}, error) {
+func (f *MongoFormatter) parseValue(valueStr string) (interface{}, error) {
 	// Create a chain of value parsers
 	parsers := []func(string) (interface{}, error, bool){
 		f.tryParseRange,
@@ -58,7 +58,7 @@ func (f *Formatter) parseValue(valueStr string) (interface{}, error) {
 }
 
 // tryParseRange attempts to parse a range value
-func (f *Formatter) tryParseRange(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseRange(valueStr string) (interface{}, error, bool) {
 	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
 		result, err := f.parseRange(valueStr)
 		return result, err, true
@@ -67,7 +67,7 @@ func (f *Formatter) tryParseRange(valueStr string) (interface{}, error, bool) {
 }
 
 // tryParseComparison attempts to parse a comparison value
-func (f *Formatter) tryParseComparison(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseComparison(valueStr string) (interface{}, error, bool) {
 	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
 		result, err := f.parseComparison(valueStr)
 		return result, err, true
@@ -76,7 +76,7 @@ func (f *Formatter) tryParseComparison(valueStr string) (interface{}, error, boo
 }
 
 // tryParseWildcard attempts to parse a wildcard value
-func (f *Formatter) tryParseWildcard(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseWildcard(valueStr string) (interface{}, error, bool) {
 	if strings.Contains(valueStr, "*") {
 		result, err := f.parseWildcard(valueStr)
 		return result, err, true
@@ -85,7 +85,7 @@ func (f *Formatter) tryParseWildcard(valueStr string) (interface{}, error, bool)
 }
 
 // tryParseRegex attempts to parse a regex value
-func (f *Formatter) tryParseRegex(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseRegex(valueStr string) (interface{}, error, bool) {
 	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
 		result, err := f.parseRegex(valueStr)
 		return result, err, true
@@ -94,7 +94,7 @@ func (f *Formatter) tryParseRegex(valueStr string) (interface{}, error, bool) {
 }
 
 // tryParseDate attempts to parse a date value
-func (f *Formatter) tryParseDate(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseDate(valueStr string) (interface{}, error, bool) {
 	if date, err := f.parseDate(valueStr); err == nil {
 		return date, nil, true
 	}
@@ -102,7 +102,7 @@ func (f *Formatter) tryParseDate(valueStr string) (interface{}, error, bool) {
 }
 
 // tryParseNumber attempts to parse a number value
-func (f *Formatter) tryParseNumber(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseNumber(valueStr string) (interface{}, error, bool) {
 	if num, err := strconv.ParseFloat(valueStr, 64); err == nil {
 		return num, nil, true
 	}
@@ -110,7 +110,7 @@ func (f *Formatter) tryParseNumber(valueStr string) (interface{}, error, bool) {
 }
 
 // tryParseBoolean attempts to parse a boolean value
-func (f *Formatter) tryParseBoolean(valueStr string) (interface{}, error, bool) {
+func (f *MongoFormatter) tryParseBoolean(valueStr string) (interface{}, error, bool) {
 	if valueStr == "true" || valueStr == "false" {
 		return valueStr == "true", nil, true
 	}
@@ -118,7 +118,7 @@ func (f *Formatter) tryParseBoolean(valueStr string) (interface{}, error, bool) 
 }
 
 // parseRange parses range queries like [start TO end] for both dates and numbers
-func (f *Formatter) parseRange(valueStr string) (interface{}, error) {
+func (f *MongoFormatter) parseRange(valueStr string) (interface{}, error) {
 	rangeStr := strings.Trim(valueStr, "[]")
 	parts := strings.Split(strings.ToUpper(rangeStr), " TO ")
 	if len(parts) != 2 {
@@ -136,7 +136,7 @@ func (f *Formatter) parseRange(valueStr string) (interface{}, error) {
 }
 
 // parseComparison parses comparison operators like >value, <value, >=value, <=value
-func (f *Formatter) parseComparison(valueStr string) (interface{}, error) {
+func (f *MongoFormatter) parseComparison(valueStr string) (interface{}, error) {
 	operator, value, err := f.extractOperatorAndValue(valueStr)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (f *Formatter) parseComparison(valueStr string) (interface{}, error) {
 }
 
 // extractOperatorAndValue extracts the operator and value from a comparison string
-func (f *Formatter) extractOperatorAndValue(valueStr string) (string, string, error) {
+func (f *MongoFormatter) extractOperatorAndValue(valueStr string) (string, string, error) {
 	comparisonOperators := []struct {
 		prefix   string
 		operator string
@@ -173,7 +173,7 @@ func (f *Formatter) extractOperatorAndValue(valueStr string) (string, string, er
 }
 
 // parseDateComparison parses a date comparison
-func (f *Formatter) parseDateComparison(operator, value string) (interface{}, error) {
+func (f *MongoFormatter) parseDateComparison(operator, value string) (interface{}, error) {
 	date, err := f.parseDate(value)
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func (f *Formatter) parseDateComparison(operator, value string) (interface{}, er
 }
 
 // parseNumberComparison parses a number comparison
-func (f *Formatter) parseNumberComparison(operator, value string) (interface{}, error) {
+func (f *MongoFormatter) parseNumberComparison(operator, value string) (interface{}, error) {
 	num, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid number: %v", err)
@@ -191,7 +191,7 @@ func (f *Formatter) parseNumberComparison(operator, value string) (interface{}, 
 }
 
 // isDateLike checks if a string looks like a date
-func (f *Formatter) isDateLike(s string) bool {
+func (f *MongoFormatter) isDateLike(s string) bool {
 	if s == "*" {
 		return false
 	}
@@ -201,7 +201,7 @@ func (f *Formatter) isDateLike(s string) bool {
 }
 
 // parseWildcard parses a wildcard pattern and returns a regex BSON query
-func (f *Formatter) parseWildcard(valueStr string) (bson.M, error) {
+func (f *MongoFormatter) parseWildcard(valueStr string) (bson.M, error) {
 	pattern := strings.ReplaceAll(valueStr, "*", ".*")
 
 	// Add proper anchoring based on wildcard position
@@ -222,22 +222,22 @@ func (f *Formatter) parseWildcard(valueStr string) (bson.M, error) {
 }
 
 // isContainsPattern checks if the pattern is a contains pattern (*J*)
-func (f *Formatter) isContainsPattern(valueStr string) bool {
+func (f *MongoFormatter) isContainsPattern(valueStr string) bool {
 	return strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
 }
 
 // isEndsWithPattern checks if the pattern is an ends with pattern (*J)
-func (f *Formatter) isEndsWithPattern(valueStr string) bool {
+func (f *MongoFormatter) isEndsWithPattern(valueStr string) bool {
 	return strings.HasPrefix(valueStr, "*") && !strings.HasSuffix(valueStr, "*")
 }
 
 // isStartsWithPattern checks if the pattern is a starts with pattern (J*)
-func (f *Formatter) isStartsWithPattern(valueStr string) bool {
+func (f *MongoFormatter) isStartsWithPattern(valueStr string) bool {
 	return !strings.HasPrefix(valueStr, "*") && strings.HasSuffix(valueStr, "*")
 }
 
 // parseRegex parses a regex pattern and returns a regex BSON query
-func (f *Formatter) parseRegex(valueStr string) (bson.M, error) {
+func (f *MongoFormatter) parseRegex(valueStr string) (bson.M, error) {
 	// Remove the leading and trailing slashes
 	pattern := valueStr[1 : len(valueStr)-1]
 
@@ -246,7 +246,7 @@ func (f *Formatter) parseRegex(valueStr string) (bson.M, error) {
 }
 
 // parseDateRange parses date range queries
-func (f *Formatter) parseDateRange(startStr, endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseDateRange(startStr, endStr string) (interface{}, error) {
 	if err := f.validateDateRange(startStr, endStr); err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (f *Formatter) parseDateRange(startStr, endStr string) (interface{}, error)
 }
 
 // validateDateRange validates that the date range is valid
-func (f *Formatter) validateDateRange(startStr, endStr string) error {
+func (f *MongoFormatter) validateDateRange(startStr, endStr string) error {
 	if startStr == "*" && endStr == "*" {
 		return errors.New("invalid date range: both start and end cannot be wildcards")
 	}
@@ -267,7 +267,7 @@ func (f *Formatter) validateDateRange(startStr, endStr string) error {
 }
 
 // parseDateRangeWithWildcardStart parses a date range with wildcard start
-func (f *Formatter) parseDateRangeWithWildcardStart(endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseDateRangeWithWildcardStart(endStr string) (interface{}, error) {
 	endDate, err := f.parseDate(endStr)
 	if err != nil {
 		return nil, err
@@ -276,7 +276,7 @@ func (f *Formatter) parseDateRangeWithWildcardStart(endStr string) (interface{},
 }
 
 // parseDateRangeWithStart parses a date range with a start value
-func (f *Formatter) parseDateRangeWithStart(startStr, endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseDateRangeWithStart(startStr, endStr string) (interface{}, error) {
 	startDate, err := f.parseDate(startStr)
 	if err != nil {
 		return nil, err
@@ -296,7 +296,7 @@ func (f *Formatter) parseDateRangeWithStart(startStr, endStr string) (interface{
 }
 
 // parseDate parses a date string in various formats
-func (f *Formatter) parseDate(dateStr string) (time.Time, error) {
+func (f *MongoFormatter) parseDate(dateStr string) (time.Time, error) {
 	if date, err := time.Parse(time.RFC3339, dateStr); err == nil {
 		return date, nil
 	}
@@ -320,7 +320,7 @@ func (f *Formatter) parseDate(dateStr string) (time.Time, error) {
 }
 
 // parseNumberRange parses number range queries
-func (f *Formatter) parseNumberRange(startStr, endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseNumberRange(startStr, endStr string) (interface{}, error) {
 	if err := f.validateNumberRange(startStr, endStr); err != nil {
 		return nil, err
 	}
@@ -333,7 +333,7 @@ func (f *Formatter) parseNumberRange(startStr, endStr string) (interface{}, erro
 }
 
 // validateNumberRange validates that the number range is valid
-func (f *Formatter) validateNumberRange(startStr, endStr string) error {
+func (f *MongoFormatter) validateNumberRange(startStr, endStr string) error {
 	if startStr == "*" && endStr == "*" {
 		return errors.New("invalid number range: both start and end cannot be wildcards")
 	}
@@ -341,7 +341,7 @@ func (f *Formatter) validateNumberRange(startStr, endStr string) error {
 }
 
 // parseNumberRangeWithWildcardStart parses a number range with wildcard start
-func (f *Formatter) parseNumberRangeWithWildcardStart(endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseNumberRangeWithWildcardStart(endStr string) (interface{}, error) {
 	endNum, err := strconv.ParseFloat(endStr, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid end number: %v", err)
@@ -350,7 +350,7 @@ func (f *Formatter) parseNumberRangeWithWildcardStart(endStr string) (interface{
 }
 
 // parseNumberRangeWithStart parses a number range with a start value
-func (f *Formatter) parseNumberRangeWithStart(startStr, endStr string) (interface{}, error) {
+func (f *MongoFormatter) parseNumberRangeWithStart(startStr, endStr string) (interface{}, error) {
 	startNum, err := strconv.ParseFloat(startStr, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start number: %v", err)
@@ -370,7 +370,7 @@ func (f *Formatter) parseNumberRangeWithStart(startStr, endStr string) (interfac
 }
 
 // expressionToBSON converts a ParticipleExpression to BSON
-func (f *Formatter) expressionToBSON(expr *lucene.ParticipleExpression) bson.M {
+func (f *MongoFormatter) expressionToBSON(expr *lucene.ParticipleExpression) bson.M {
 	if len(expr.Or) == 0 {
 		return bson.M{}
 	}
@@ -394,7 +394,7 @@ func (f *Formatter) expressionToBSON(expr *lucene.ParticipleExpression) bson.M {
 }
 
 // andExpressionToBSON converts a ParticipleAndExpression to BSON
-func (f *Formatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression) bson.M {
+func (f *MongoFormatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression) bson.M {
 	if len(andExpr.And) == 0 {
 		return bson.M{}
 	}
@@ -408,7 +408,7 @@ func (f *Formatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression)
 }
 
 // processAndExpressions processes all AND expressions and separates simple fields from complex conditions
-func (f *Formatter) processAndExpressions(expressions []*lucene.ParticipleNotExpression) (bson.M, []bson.M) {
+func (f *MongoFormatter) processAndExpressions(expressions []*lucene.ParticipleNotExpression) (bson.M, []bson.M) {
 	var conditions []bson.M
 	directFields := bson.M{}
 	hasComplexExpressions := false
@@ -432,7 +432,7 @@ func (f *Formatter) processAndExpressions(expressions []*lucene.ParticipleNotExp
 }
 
 // canMergeField checks if a field can be merged into directFields
-func (f *Formatter) canMergeField(directFields bson.M, childBSON bson.M, hasComplexExpressions bool) bool {
+func (f *MongoFormatter) canMergeField(directFields bson.M, childBSON bson.M, hasComplexExpressions bool) bool {
 	if hasComplexExpressions {
 		return false
 	}
@@ -447,14 +447,14 @@ func (f *Formatter) canMergeField(directFields bson.M, childBSON bson.M, hasComp
 }
 
 // mergeField merges a simple field into directFields
-func (f *Formatter) mergeField(directFields bson.M, childBSON bson.M) {
+func (f *MongoFormatter) mergeField(directFields bson.M, childBSON bson.M) {
 	for k, v := range childBSON {
 		directFields[k] = v
 	}
 }
 
 // buildAndResult builds the final result from directFields and conditions
-func (f *Formatter) buildAndResult(directFields bson.M, conditions []bson.M) bson.M {
+func (f *MongoFormatter) buildAndResult(directFields bson.M, conditions []bson.M) bson.M {
 	if len(directFields) > 0 && len(conditions) > 0 {
 		conditions = append(conditions, directFields)
 		return bson.M{"$and": conditions}
@@ -465,12 +465,12 @@ func (f *Formatter) buildAndResult(directFields bson.M, conditions []bson.M) bso
 }
 
 // notExpressionToBSON converts a ParticipleNotExpression to BSON
-func (f *Formatter) notExpressionToBSON(notExpr *lucene.ParticipleNotExpression) bson.M {
+func (f *MongoFormatter) notExpressionToBSON(notExpr *lucene.ParticipleNotExpression) bson.M {
 	return f.notExpressionToBSONWithContext(notExpr, false)
 }
 
 // notExpressionToBSONWithContext converts a ParticipleNotExpression to BSON with context
-func (f *Formatter) notExpressionToBSONWithContext(notExpr *lucene.ParticipleNotExpression, inNotContext bool) bson.M {
+func (f *MongoFormatter) notExpressionToBSONWithContext(notExpr *lucene.ParticipleNotExpression, inNotContext bool) bson.M {
 	if notExpr.Not != nil {
 		// Handle NOT operation
 		childBSON := f.notExpressionToBSONWithContext(notExpr.Not, true)
@@ -481,7 +481,7 @@ func (f *Formatter) notExpressionToBSONWithContext(notExpr *lucene.ParticipleNot
 }
 
 // termToBSONWithContext converts a ParticipleTerm to BSON with context
-func (f *Formatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNotContext bool) bson.M {
+func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNotContext bool) bson.M {
 	if term.FieldValue != nil {
 		return f.fieldValueToBSONWithContext(term.FieldValue, inNotContext)
 	}
@@ -498,7 +498,7 @@ func (f *Formatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNotCont
 }
 
 // fieldValueToBSONWithContext converts a ParticipleFieldValue to BSON with context
-func (f *Formatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, inNotContext bool) bson.M {
+func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, inNotContext bool) bson.M {
 	// Check if this field value should be split into field:value + free text
 	if fieldValue, freeText := fv.SplitIntoFieldAndText(); fieldValue != nil {
 		// Convert field value to BSON
@@ -526,7 +526,7 @@ func (f *Formatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue,
 }
 
 // extractValueString extracts the string value from a ParticipleValue
-func (f *Formatter) extractValueString(value *lucene.ParticipleValue) string {
+func (f *MongoFormatter) extractValueString(value *lucene.ParticipleValue) string {
 	valueExtractors := []func(*lucene.ParticipleValue) (string, bool){
 		f.extractTextTerms,
 		f.extractString,
@@ -546,7 +546,7 @@ func (f *Formatter) extractValueString(value *lucene.ParticipleValue) string {
 }
 
 // extractTextTerms extracts text terms from ParticipleValue
-func (f *Formatter) extractTextTerms(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractTextTerms(value *lucene.ParticipleValue) (string, bool) {
 	if len(value.TextTerms) > 0 {
 		return strings.Join(value.TextTerms, " "), true
 	}
@@ -554,7 +554,7 @@ func (f *Formatter) extractTextTerms(value *lucene.ParticipleValue) (string, boo
 }
 
 // extractString extracts string from ParticipleValue
-func (f *Formatter) extractString(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractString(value *lucene.ParticipleValue) (string, bool) {
 	if value.String != nil {
 		return *value.String, true
 	}
@@ -562,7 +562,7 @@ func (f *Formatter) extractString(value *lucene.ParticipleValue) (string, bool) 
 }
 
 // extractSingleString extracts single string from ParticipleValue
-func (f *Formatter) extractSingleString(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractSingleString(value *lucene.ParticipleValue) (string, bool) {
 	if value.SingleString != nil {
 		return *value.SingleString, true
 	}
@@ -570,7 +570,7 @@ func (f *Formatter) extractSingleString(value *lucene.ParticipleValue) (string, 
 }
 
 // extractBracketed extracts bracketed value from ParticipleValue
-func (f *Formatter) extractBracketed(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractBracketed(value *lucene.ParticipleValue) (string, bool) {
 	if value.Bracketed != nil {
 		return *value.Bracketed, true
 	}
@@ -578,7 +578,7 @@ func (f *Formatter) extractBracketed(value *lucene.ParticipleValue) (string, boo
 }
 
 // extractDateTime extracts datetime from ParticipleValue
-func (f *Formatter) extractDateTime(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractDateTime(value *lucene.ParticipleValue) (string, bool) {
 	if value.DateTime != nil {
 		return *value.DateTime, true
 	}
@@ -586,7 +586,7 @@ func (f *Formatter) extractDateTime(value *lucene.ParticipleValue) (string, bool
 }
 
 // extractTimeString extracts time string from ParticipleValue
-func (f *Formatter) extractTimeString(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractTimeString(value *lucene.ParticipleValue) (string, bool) {
 	if value.TimeString != nil {
 		return *value.TimeString, true
 	}
@@ -594,7 +594,7 @@ func (f *Formatter) extractTimeString(value *lucene.ParticipleValue) (string, bo
 }
 
 // extractRegex extracts regex from ParticipleValue
-func (f *Formatter) extractRegex(value *lucene.ParticipleValue) (string, bool) {
+func (f *MongoFormatter) extractRegex(value *lucene.ParticipleValue) (string, bool) {
 	if value.Regex != nil {
 		return *value.Regex, true
 	}
@@ -602,7 +602,7 @@ func (f *Formatter) extractRegex(value *lucene.ParticipleValue) (string, bool) {
 }
 
 // freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
-func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
+func (f *MongoFormatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
 	var valueStr string
 
 	if ft.QuotedValue != nil {
@@ -626,7 +626,7 @@ func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
 }
 
 // extractTextSearches extracts text search strings from OR conditions
-func (f *Formatter) extractTextSearches(andExpressions []*lucene.ParticipleAndExpression) []string {
+func (f *MongoFormatter) extractTextSearches(andExpressions []*lucene.ParticipleAndExpression) []string {
 	var textSearches []string
 
 	for _, andExpr := range andExpressions {
@@ -643,7 +643,7 @@ func (f *Formatter) extractTextSearches(andExpressions []*lucene.ParticipleAndEx
 }
 
 // extractTextSearchString extracts the search string from a $text BSON expression
-func (f *Formatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
+func (f *MongoFormatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
 	textOp, hasText := bsonResult["$text"]
 	if !hasText {
 		return "", false
@@ -668,7 +668,7 @@ func (f *Formatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
 }
 
 // processSearchString processes the search string by removing quotes if present
-func (f *Formatter) processSearchString(searchStr string) string {
+func (f *MongoFormatter) processSearchString(searchStr string) string {
 	// For quoted searches, remove the quotes for combination
 	if f.isQuotedString(searchStr) {
 		return searchStr[1 : len(searchStr)-1]
@@ -678,12 +678,12 @@ func (f *Formatter) processSearchString(searchStr string) string {
 }
 
 // isQuotedString checks if a string is wrapped in quotes
-func (f *Formatter) isQuotedString(s string) bool {
+func (f *MongoFormatter) isQuotedString(s string) bool {
 	return len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"'
 }
 
 // combineTextSearches combines multiple text search strings into a single $text expression
-func (f *Formatter) combineTextSearches(textSearches []string) bson.M {
+func (f *MongoFormatter) combineTextSearches(textSearches []string) bson.M {
 	// For MongoDB text search, multiple unquoted terms are OR'd by default
 	// We need to extract individual words from each phrase for OR behavior
 	var allTerms []string
@@ -700,7 +700,7 @@ func (f *Formatter) combineTextSearches(textSearches []string) bson.M {
 }
 
 // negateBSON negates a BSON condition using De Morgan's law
-func (f *Formatter) negateBSON(condition bson.M) bson.M {
+func (f *MongoFormatter) negateBSON(condition bson.M) bson.M {
 	if orClause, hasOr := condition["$or"]; hasOr {
 		return bson.M{"$and": f.negateConditions(orClause.([]bson.M))}
 	}
@@ -717,7 +717,7 @@ func (f *Formatter) negateBSON(condition bson.M) bson.M {
 }
 
 // negateConditions negates a list of conditions by adding $ne operators
-func (f *Formatter) negateConditions(conditions []bson.M) []bson.M {
+func (f *MongoFormatter) negateConditions(conditions []bson.M) []bson.M {
 	var result []bson.M
 	for _, condition := range conditions {
 		negated := bson.M{}
@@ -730,7 +730,7 @@ func (f *Formatter) negateConditions(conditions []bson.M) []bson.M {
 }
 
 // isSimpleFieldValue checks if a BSON condition is a simple field:value pair
-func (f *Formatter) isSimpleFieldValue(condition bson.M) bool {
+func (f *MongoFormatter) isSimpleFieldValue(condition bson.M) bool {
 	if len(condition) != 1 {
 		return false
 	}
@@ -745,7 +745,7 @@ func (f *Formatter) isSimpleFieldValue(condition bson.M) bool {
 }
 
 // hasComplexOperators checks if a BSON condition contains complex operators
-func (f *Formatter) hasComplexOperators(condition bson.M) bool {
+func (f *MongoFormatter) hasComplexOperators(condition bson.M) bool {
 	complexOperators := []string{"$or", "$and", "$text"}
 	for _, op := range complexOperators {
 		if _, hasOp := condition[op]; hasOp {
@@ -756,7 +756,7 @@ func (f *Formatter) hasComplexOperators(condition bson.M) bool {
 }
 
 // hasComplexFieldValues checks if any field value contains complex operators
-func (f *Formatter) hasComplexFieldValues(condition bson.M) bool {
+func (f *MongoFormatter) hasComplexFieldValues(condition bson.M) bool {
 	complexOperators := []string{"$or", "$and", "$text"}
 	for _, v := range condition {
 		if vMap, ok := v.(bson.M); ok {

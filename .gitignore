@@ -37,7 +37,9 @@ go.work.sum
 
 # Coverage reports
 coverage.html
-coverage.xml
+coverage.out
+*_coverage.html
+*_coverage.out
 
 # Mac specific files
 .DS_Store

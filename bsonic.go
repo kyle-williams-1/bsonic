@@ -7,13 +7,13 @@ import (
 
 	"github.com/kyle-williams-1/bsonic/config"
 	"github.com/kyle-williams-1/bsonic/formatter"
-	bsonformatter "github.com/kyle-williams-1/bsonic/formatter/bson"
+	"github.com/kyle-williams-1/bsonic/formatter/mongo"
 	"github.com/kyle-williams-1/bsonic/language"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Parser represents a query parser for the selected language and bson formatter.
+// Parser represents a query parser for the selected language and MongoDB formatter.
 type Parser struct {
 	// Config holds the language and formatter configuration
 	Config *config.Config
@@ -36,19 +36,19 @@ func NewParser(langType config.LanguageType) (language.Parser, error) {
 // NewFormatter creates a formatter based on the formatter type.
 func NewFormatter(formatterType config.FormatterType) (formatter.Formatter[bson.M], error) {
 	switch formatterType {
-	case config.FormatterBSON:
-		return bsonformatter.New(), nil
+	case config.FormatterMongo:
+		return mongo.New(), nil
 	default:
 		return nil, fmt.Errorf("unsupported formatter type: %s", formatterType)
 	}
 }
 
-// NewBSONFormatter creates a BSON formatter with proper typing.
-func NewBSONFormatter() formatter.Formatter[bson.M] {
-	return bsonformatter.New()
+// NewMongoFormatter creates a MongoDB BSON formatter with proper typing.
+func NewMongoFormatter() formatter.Formatter[bson.M] {
+	return mongo.New()
 }
 
-// New creates a new BSON parser instance with default configuration.
+// New creates a new parser instance with default configuration.
 func New() *Parser {
 	cfg := config.Default()
 	languageParser, _ := NewParser(cfg.Language)

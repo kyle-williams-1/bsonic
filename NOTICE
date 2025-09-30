@@ -1,3 +1,14 @@
+## Trademark Notice
+
+This project references MongoDB and Atlas Search, trademarks of MongoDB, Inc.
+This project references Apache Lucene, a trademark of the Apache Software Foundation.
+
+This project is an independent open-source library and is not affiliated with, endorsed by, or sponsored by MongoDB, Inc. or the Apache Software Foundation.
+
+All references to MongoDB, Atlas Search, and Lucene are for descriptive purposes only.
+
+---
+
 This project includes software from the following third-party libraries:
 
 ## MIT License

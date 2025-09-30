@@ -36,7 +36,7 @@ jobs:
     - name: Start MongoDB with Docker Compose
       run: |
         # Start MongoDB with seed data
-        docker compose up -d
+        docker compose -f tests/lucene-mongo/docker-compose.yml up -d
         
         # Wait for MongoDB to be ready and verify data seeding
         echo "Waiting for MongoDB to be ready..."
@@ -47,22 +47,22 @@ jobs:
 
     - name: Run integration tests with coverage
       run: |
-        go test -tags=integration -v -coverprofile=integration_coverage.out ./integration/...
+        go test -tags=integration -v -coverprofile=integration_coverage.out -covermode=atomic -coverpkg=./... ./tests/lucene-mongo/...
         go tool cover -html=integration_coverage.out -o integration_coverage.html
       env:
         MONGODB_URI: mongodb://admin:password@localhost:27017/bsonic_test?authSource=admin
 
-    - name: Upload coverage reports
-      uses: actions/upload-artifact@v4
+    - name: Upload integration coverage to Codecov
+      uses: codecov/codecov-action@v5
       if: always()
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: integration_coverage.out
+        flags: integration
         name: integration-coverage
-        path: |
-          integration_coverage.out
-          integration_coverage.html
 
     - name: Cleanup
       if: always()
       run: |
         # Stop and remove containers
-        docker compose down -v
+        docker compose -f tests/lucene-mongo/docker-compose.yml down -v

@@ -10,7 +10,9 @@ help:
 	@echo "  test              Run unit tests"
 	@echo "  test-integration  Run integration tests (requires Docker)"
 	@echo "  test-all          Run all tests (unit + integration)"
-	@echo "  coverage          Generate test coverage report"
+	@echo "  coverage          Generate unit test coverage report"
+	@echo "  coverage-integration Generate integration test coverage report"
+	@echo "  coverage-all      Generate all coverage reports"
 	@echo ""
 	@echo "Docker:"
 	@echo "  docker-up         Start MongoDB container for integration tests"
@@ -46,9 +48,20 @@ test-all: test test-integration
 
 coverage:
 	@echo "Generating test coverage report..."
-	go test -coverprofile=coverage.out -covermode=atomic .
+	@echo "Running unit tests with coverage for all packages..."
+	go test -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+coverage-integration:
+	@echo "Generating integration test coverage report..."
+	@echo "Running integration tests with coverage for all packages..."
+	go test -tags=integration -coverprofile=integration_coverage.out -covermode=atomic -coverpkg=./... ./tests/lucene-mongo/...
+	go tool cover -html=integration_coverage.out -o integration_coverage.html
+	@echo "Integration coverage report generated: integration_coverage.html"
+
+coverage-all: coverage coverage-integration
+	@echo "All coverage reports generated!"
 
 # Docker commands
 docker-up:
@@ -139,7 +152,7 @@ vet:
 
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f coverage.out coverage.html integration_coverage.out integration_coverage.html
+	rm -f coverage.out coverage.html integration_coverage.out integration_coverage.html coverage_full.out coverage_full.html integration_coverage_full.out integration_coverage_full.html
 	@echo "Build artifacts cleaned"
 
 # CI/CD targets

@@ -28,7 +28,7 @@ Input Query String
         ↓
     [Configuration] → [Language Parser] → [AST] → [Formatter] → [BSON Output]
         ↓                ↓                 ↓         ↓
-    [Config]        [Lucene Parser]   [Participle]  [BSON Formatter]
+    [Config]        [Lucene Parser]   [Participle]  [MongoDB Formatter]
     - Language:     - Participle      - AST         - Field Queries
       lucene          Lexer/Parser      Walker      - Text Search ($text)
     - Formatter:    - Grammar         - Expression  - Wildcards ($regex)
@@ -53,7 +53,7 @@ bsonic/
 │   └── lucene/       # Lucene-style parser (Participle-based)
 ├── formatter/        # Output formatter implementations
 │   ├── formatter.go  # Formatter interface
-│   └── bson/         # BSON output formatter
+│   └── mongo/        # MongoDB BSON output formatter
 └── bsonic.go         # Main API, orchestration, and factory functions
 ```
 
@@ -84,7 +84,7 @@ type Config struct {
 // Builder pattern for configuration
 cfg := config.Default().
     WithLanguage(config.LanguageLucene).
-    WithFormatter(config.FormatterBSON)
+    WithFormatter(config.FormatterMongo)
 ```
 
 ## Core Components
@@ -99,7 +99,7 @@ Generic orchestration layer that coordinates between language parsers and format
 
 ### Formatter System (`formatter/`)
 - **Interfaces**: Generic formatter contract
-- **BSON Formatter**: MongoDB output with `$text` and `$and` operators
+- **MongoDB Formatter**: MongoDB output with `$text` and `$and` operators
 - **AST Processing**: Converts parsed queries to BSON operations with value parsing
 
 ### Configuration System (`config/`)
@@ -134,7 +134,7 @@ const (
 
 type FormatterType string
 const (
-    FormatterBSON FormatterType = "bson"
+    FormatterMongo FormatterType = "mongo"
 )
 ```
 
@@ -147,7 +147,7 @@ cfg := config.Default()
 // Custom configuration
 cfg := config.Default().
     WithLanguage(config.LanguageLucene).
-    WithFormatter(config.FormatterBSON)
+    WithFormatter(config.FormatterMongo)
 
 // Create parser with custom configuration
 parser, err := bsonic.NewWithConfig(cfg)
@@ -181,7 +181,7 @@ formatter, err := bsonic.NewFormatter(cfg.Formatter)
 
 1. **Grammar Changes**: Update Participle struct definitions in `language/lucene/parser.go`
 2. **Lexer Updates**: Add new token patterns to the lexer rules
-3. **AST Conversion**: Implement corresponding BSON conversion logic in `formatter/bson/formatter.go`
+3. **AST Conversion**: Implement corresponding MongoDB BSON conversion logic in `formatter/mongo/formatter.go`
 4. **Value Parsing**: Add type detection and parsing logic to `parseValue()` method
 5. **Tests**: Add comprehensive test coverage
 
@@ -248,7 +248,7 @@ BSONIC supports different BSON implementations for various document databases:
 
 **MongoDB BSON (Default):**
 ```go
-// formatter/bson/formatter.go - Current implementation
+// formatter/mongo/formatter.go - Current MongoDB implementation
 // Uses go.mongodb.org/mongo-driver/bson
 // Supports MongoDB-specific operators: $text, $regex, $gte, $lte, etc.
 ```
@@ -285,7 +285,7 @@ func (f *Formatter) freeTextToBSON(ft *lucene.ParticipleFreeText) CustomBSON {
 
 #### Custom BSON Variants
 
-1. **Create Custom BSON Formatter:**
+1. **Create Custom MongoDB Formatter:**
 ```go
 // formatter/customdb/formatter.go
 package customdb
@@ -296,7 +296,7 @@ type Formatter struct {
     // Custom database-specific BSON implementation
 }
 
-// Implement BSON formatter interface
+// Implement MongoDB BSON formatter interface
 func (f *Formatter) Format(ast interface{}) (bson.M, error) {
     // Convert AST to custom database BSON format
     // May use different operators or data types
@@ -307,7 +307,7 @@ func (f *Formatter) Format(ast interface{}) (bson.M, error) {
 ```go
 // config/config.go
 const (
-    FormatterBSON     FormatterType = "bson"      // MongoDB BSON
+    FormatterMongo    FormatterType = "mongo"     // MongoDB BSON
     FormatterCustomDB FormatterType = "customdb"  // Custom document DB
 )
 ```
@@ -317,8 +317,8 @@ const (
 // bsonic.go - Update NewFormatter function
 func NewFormatter(formatterType config.FormatterType) (formatter.Formatter[bson.M], error) {
     switch formatterType {
-    case config.FormatterBSON:
-        return bsonformatter.New(), nil
+    case config.FormatterMongo:
+        return mongoformatter.New(), nil
     case config.FormatterCustomDB:
         return customdbformatter.New(), nil
     default:
