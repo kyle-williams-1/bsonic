@@ -4,9 +4,6 @@ package lucene
 import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
-	"github.com/kyle-williams-1/bsonic/config"
-	"github.com/kyle-williams-1/bsonic/language"
-	"github.com/kyle-williams-1/bsonic/registry"
 )
 
 // Participle Grammar structures for Lucene-style queries
@@ -152,11 +149,4 @@ func New() *Parser {
 // Parse parses a Lucene-style query string into an AST.
 func (p *Parser) Parse(query string) (interface{}, error) {
 	return participleParser.ParseString("", query)
-}
-
-// init registers the Lucene language with the global registry.
-func init() {
-	registry.RegisterLanguage(config.LanguageLucene, func() language.Parser {
-		return New()
-	})
 }

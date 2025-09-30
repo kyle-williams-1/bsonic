@@ -8,10 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kyle-williams-1/bsonic/config"
-	"github.com/kyle-williams-1/bsonic/formatter"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
-	"github.com/kyle-williams-1/bsonic/registry"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -773,11 +770,4 @@ func (f *MongoFormatter) hasComplexFieldValues(condition bson.M) bool {
 		}
 	}
 	return false
-}
-
-// init registers the MongoDB formatter with the global registry.
-func init() {
-	registry.RegisterFormatter(config.FormatterMongo, func() formatter.Formatter[bson.M] {
-		return New()
-	})
 }
