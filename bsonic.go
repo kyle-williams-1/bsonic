@@ -88,6 +88,8 @@ func Parse(query string) (bson.M, error) {
 }
 
 // ParseWithDefaults converts a query string into a BSON document using the provided default fields for unstructured queries.
+// This function handles both structured queries (field:value pairs) and unstructured queries (free text).
+// For unstructured queries, the free text is searched across all provided defaultFields using regex.
 func ParseWithDefaults(defaultFields []string, query string) (bson.M, error) {
 	if len(defaultFields) == 0 {
 		return nil, fmt.Errorf("default fields cannot be empty")
@@ -122,7 +124,7 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 		if !ok {
 			return nil, fmt.Errorf("formatter is not a MongoFormatter")
 		}
-		return mongoFormatter.FormatWithDefaults(ast, p.Config.DefaultFields)
+		return mongoFormatter.Format(ast, p.Config.DefaultFields)
 	}
 
 	// If no default fields are configured, return an error
@@ -130,6 +132,8 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 }
 
 // ParseWithDefaults converts a query string into a BSON document using the provided default fields for unstructured queries.
+// This method handles both structured queries (field:value pairs) and unstructured queries (free text).
+// For unstructured queries, the free text is searched across all provided defaultFields using regex.
 func (p *Parser) ParseWithDefaults(defaultFields []string, query string) (bson.M, error) {
 	if len(defaultFields) == 0 {
 		return nil, fmt.Errorf("default fields cannot be empty")
@@ -152,5 +156,5 @@ func (p *Parser) ParseWithDefaults(defaultFields []string, query string) (bson.M
 	}
 
 	// Always use default fields for ParseWithDefaults
-	return mongoFormatter.FormatWithDefaults(ast, defaultFields)
+	return mongoFormatter.Format(ast, defaultFields)
 }
