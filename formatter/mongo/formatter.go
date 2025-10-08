@@ -21,9 +21,24 @@ func New() *MongoFormatter {
 }
 
 // Format converts a parsed query AST into a BSON document.
+// This method handles structured queries only.
+func (f *MongoFormatter) Format(ast interface{}) (bson.M, error) {
+	// Type assert to the ParticipleQuery AST type from the Lucene parser
+	participleQuery, ok := ast.(*lucene.ParticipleQuery)
+	if !ok {
+		return bson.M{}, fmt.Errorf("expected *lucene.ParticipleQuery AST, got %T", ast)
+	}
+
+	if participleQuery.Expression == nil {
+		return bson.M{}, nil
+	}
+	return f.expressionToBSON(participleQuery.Expression, nil), nil
+}
+
+// Format converts a parsed query AST into a BSON document.
 // This method handles both structured queries (field:value pairs) and unstructured queries (free text).
 // For unstructured queries, the free text is searched across all provided defaultFields using regex.
-func (f *MongoFormatter) Format(ast interface{}, defaultFields []string) (bson.M, error) {
+func (f *MongoFormatter) FormatWithDefaults(ast interface{}, defaultFields []string) (bson.M, error) {
 	// Type assert to the ParticipleQuery AST type from the Lucene parser
 	participleQuery, ok := ast.(*lucene.ParticipleQuery)
 	if !ok {
@@ -675,7 +690,6 @@ func (f *MongoFormatter) createDefaultFieldRegexSearch(pattern string, defaultFi
 
 // createFieldRegexSearch creates a regex search for a specific field
 func (f *MongoFormatter) createFieldRegexSearch(field, valueStr string) bson.M {
-	// Reuse existing parsing logic
 	regexBSON, err := f.parseValueToRegex(valueStr)
 	if err != nil {
 		// Fallback to plain text with regex escaping

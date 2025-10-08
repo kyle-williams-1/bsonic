@@ -124,7 +124,7 @@ func (p *Parser) Parse(query string) (bson.M, error) {
 		if !ok {
 			return nil, fmt.Errorf("formatter is not a MongoFormatter")
 		}
-		return mongoFormatter.Format(ast, p.Config.DefaultFields)
+		return mongoFormatter.FormatWithDefaults(ast, p.Config.DefaultFields)
 	}
 
 	// If no default fields are configured, return an error
@@ -156,5 +156,5 @@ func (p *Parser) ParseWithDefaults(defaultFields []string, query string) (bson.M
 	}
 
 	// Always use default fields for ParseWithDefaults
-	return mongoFormatter.Format(ast, defaultFields)
+	return mongoFormatter.FormatWithDefaults(ast, defaultFields)
 }
