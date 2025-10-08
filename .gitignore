@@ -43,3 +43,6 @@ coverage.out
 
 # Mac specific files
 .DS_Store
+
+# Design documents
+design_*.md

@@ -20,13 +20,13 @@ type ParticipleExpression struct {
 
 // ParticipleAndExpression handles AND operations (higher precedence than OR)
 type ParticipleAndExpression struct {
-	And []*ParticipleNotExpression `@@ ( "AND" @@ )*`
+	And []*ParticipleOperand `@@ ( "AND" @@ )*`
 }
 
-// ParticipleNotExpression handles NOT operations (highest precedence)
-type ParticipleNotExpression struct {
-	Not  *ParticipleNotExpression `"NOT" @@`
-	Term *ParticipleTerm          `| @@`
+// ParticipleOperand handles operands that can optionally be negated (highest precedence)
+type ParticipleOperand struct {
+	Not  *ParticipleOperand `"NOT" @@`
+	Term *ParticipleTerm    `| @@`
 }
 
 // ParticipleTerm represents individual query terms
@@ -72,6 +72,7 @@ func (fv *ParticipleFieldValue) SplitIntoFieldAndText() (*ParticipleFieldValue, 
 type ParticipleFreeText struct {
 	QuotedValue   *ParticipleQuotedValue   `@@`
 	UnquotedValue *ParticipleUnquotedValue `| @@`
+	RegexValue    *string                  `| @Regex`
 }
 
 // ParticipleQuotedValue represents quoted values for free text search

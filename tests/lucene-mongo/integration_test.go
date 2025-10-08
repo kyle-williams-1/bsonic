@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kyle-williams-1/bsonic"
+	bsonic_config "github.com/kyle-williams-1/bsonic/config"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -48,7 +49,14 @@ func TestMain(m *testing.M) {
 
 	testClient = client
 	testDB = client.Database("bsonic_test")
-	parser = bsonic.New()
+
+	// Create parser with default fields for integration tests
+	cfg := bsonic_config.Default().WithDefaultFields([]string{"name", "description", "email"})
+	parser, err = bsonic.NewWithConfig(cfg)
+	if err != nil {
+		fmt.Printf("Failed to create parser: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Run tests
 	code := m.Run()
@@ -725,70 +733,70 @@ func TestRegexPatterns(t *testing.T) {
 	}
 }
 
-// TestFreeTextSearch tests free text search functionality
-func TestFreeTextSearch(t *testing.T) {
+// TestDefaultFieldsSearch tests default fields search functionality
+func TestDefaultFieldsSearch(t *testing.T) {
 	testCases := []struct {
 		name     string
 		query    string
 		expected int
 	}{
 		{
-			name:     "simple free text search",
+			name:     "simple default fields search",
 			query:    `"John Doe"`,
-			expected: 1, // Should match John Doe
+			expected: 1, // Should match John Doe in name field
 		},
 		{
-			name:     "free text search with single quotes",
+			name:     "default fields search with single quotes",
 			query:    `'Jane Smith'`,
-			expected: 1, // Should match Jane Smith
+			expected: 1, // Should match Jane Smith in name field
 		},
 		{
-			name:     "free text search with field query",
+			name:     "default fields search with field query",
 			query:    `"John Doe" AND active:true`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
-			name:     "free text search with OR condition",
+			name:     "default fields search with OR condition",
 			query:    `"John Doe" AND (active:true OR role:admin)`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
-			name:     "multiple free text searches with OR",
+			name:     "multiple default fields searches with OR",
 			query:    `("John Doe" OR "Jane Smith") AND active:true`,
 			expected: 2, // Should match both John Doe and Jane Smith who are active
 		},
 		{
-			name:     "free text search with NOT condition",
+			name:     "default fields search with NOT condition",
 			query:    `"John Doe" AND NOT role:guest`,
 			expected: 1, // Should match John Doe who is not a guest
 		},
 		{
-			name:     "unquoted single word free text search",
+			name:     "unquoted single word default fields search",
 			query:    `John`,
-			expected: 1, // Should match John Doe
+			expected: 2, // Should match John Doe and Bob Johnson
 		},
 		{
-			name:     "unquoted multiple words free text search",
+			name:     "unquoted multiple words default fields search",
 			query:    `John Doe`,
 			expected: 1, // Should match John Doe
 		},
 		{
-			name:     "unquoted free text search with field query",
+			name:     "unquoted default fields search with field query",
 			query:    `John AND active:true`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
-			name:     "unquoted free text search with OR condition",
+			name:     "unquoted default fields search with OR condition",
 			query:    `John AND (active:true OR role:admin)`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
-			name:     "multiple unquoted free text searches with OR",
+			name:     "multiple unquoted default fields searches with OR",
 			query:    `(John OR Jane) AND active:true`,
 			expected: 2, // Should match both John Doe and Jane Smith who are active
 		},
 		{
-			name:     "mixed quoted and unquoted free text searches",
+			name:     "mixed quoted and unquoted default fields searches",
 			query:    `("John Doe" OR Jane) AND active:true`,
 			expected: 2, // Should match both John Doe and Jane Smith who are active
 		},
@@ -867,4 +875,74 @@ func TestUtilityAndEdgeCases(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestDefaultFieldsIntegration tests default fields functionality with actual MongoDB queries
+func TestDefaultFieldsIntegration(t *testing.T) {
+	collection := testDB.Collection("users")
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		query         string
+		defaultFields []string
+		expected      int
+	}{
+		{
+			name:          "single default field name search",
+			query:         "john",
+			defaultFields: []string{"name"},
+			expected:      2, // Should match "John Doe" and "Bob Johnson"
+		},
+		{
+			name:          "single default field email search",
+			query:         "jane",
+			defaultFields: []string{"email"},
+			expected:      1, // Should match jane.smith@example.com
+		},
+		{
+			name:          "multiple default fields search",
+			query:         "admin",
+			defaultFields: []string{"name", "role"},
+			expected:      2, // Should match "John Doe" and "Charlie Wilson" (both have role:admin)
+		},
+		{
+			name:          "default field with wildcard",
+			query:         "j*",
+			defaultFields: []string{"name"},
+			expected:      2, // Should match "John Doe" and "Jane Smith"
+		},
+		{
+			name:          "default field with field query",
+			query:         "john AND active:true",
+			defaultFields: []string{"name"},
+			expected:      1, // Should match "John Doe" who is active
+		},
+		{
+			name:          "default field with OR condition",
+			query:         "john AND (role:admin OR role:user)",
+			defaultFields: []string{"name"},
+			expected:      2, // Should match "John Doe" (admin) and "Bob Johnson" (user)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse the query with default fields
+			filter, err := bsonic.ParseWithDefaults(tt.defaultFields, tt.query)
+			if err != nil {
+				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			}
+
+			// Execute the query
+			count, err := collection.CountDocuments(ctx, filter)
+			if err != nil {
+				t.Fatalf("Failed to execute query '%s': %v", tt.query, err)
+			}
+
+			if int(count) != tt.expected {
+				t.Errorf("Query '%s' with default fields %v: expected %d documents, got %d", tt.query, tt.defaultFields, tt.expected, count)
+			}
+		})
+	}
 }

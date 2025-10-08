@@ -19,15 +19,17 @@ const (
 
 // Config represents the configuration for a parser.
 type Config struct {
-	Language  LanguageType
-	Formatter FormatterType
+	Language      LanguageType
+	Formatter     FormatterType
+	DefaultFields []string
 }
 
 // Default returns the default configuration with Lucene language and MongoDB formatter.
 func Default() *Config {
 	return &Config{
-		Language:  LanguageLucene,
-		Formatter: FormatterMongo,
+		Language:      LanguageLucene,
+		Formatter:     FormatterMongo,
+		DefaultFields: []string{},
 	}
 }
 
@@ -40,5 +42,11 @@ func (c *Config) WithLanguage(lang LanguageType) *Config {
 // WithFormatter sets the formatter type and returns the config.
 func (c *Config) WithFormatter(formatter FormatterType) *Config {
 	c.Formatter = formatter
+	return c
+}
+
+// WithDefaultFields sets the default fields for unstructured queries and returns the config.
+func (c *Config) WithDefaultFields(fields []string) *Config {
+	c.DefaultFields = fields
 	return c
 }

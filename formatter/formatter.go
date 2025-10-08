@@ -6,6 +6,7 @@ import "go.mongodb.org/mongo-driver/bson"
 // Formatter represents a query result formatter for a specific output type.
 type Formatter[T any] interface {
 	Format(ast interface{}) (T, error)
+	FormatWithDefaults(ast interface{}, defaultFields []string) (T, error)
 }
 
 // Type aliases for formatter types

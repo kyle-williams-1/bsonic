@@ -11,32 +11,40 @@ import (
 // TestParse tests the main entry point Parse() function
 func TestParse(t *testing.T) {
 	t.Run("ValidQuery", func(t *testing.T) {
-		result, err := Parse("test")
+		result, err := ParseWithDefaults([]string{"name"}, "test")
 		if err != nil {
-			t.Fatalf("Parse() should not return error, got: %v", err)
+			t.Fatalf("ParseWithDefaults() should not return error, got: %v", err)
 		}
 		if result == nil {
-			t.Fatal("Parse() should return a non-nil result")
+			t.Fatal("ParseWithDefaults() should return a non-nil result")
 		}
 	})
 
 	t.Run("EmptyQuery", func(t *testing.T) {
-		result, err := Parse("")
+		result, err := ParseWithDefaults([]string{"name"}, "")
 		if err != nil {
-			t.Fatalf("Parse() should not return error with empty query, got: %v", err)
+			t.Fatalf("ParseWithDefaults() should not return error with empty query, got: %v", err)
 		}
 		if result == nil {
-			t.Fatal("Parse() should return a non-nil result")
+			t.Fatal("ParseWithDefaults() should return a non-nil result")
 		}
 	})
 
 	t.Run("WhitespaceQuery", func(t *testing.T) {
-		result, err := Parse("   ")
+		result, err := ParseWithDefaults([]string{"name"}, "   ")
 		if err != nil {
-			t.Fatalf("Parse() should not return error with whitespace query, got: %v", err)
+			t.Fatalf("ParseWithDefaults() should not return error with whitespace query, got: %v", err)
 		}
 		if result == nil {
-			t.Fatal("Parse() should return a non-nil result")
+			t.Fatal("ParseWithDefaults() should return a non-nil result")
+		}
+	})
+
+	t.Run("ParseWithoutDefaultFields", func(t *testing.T) {
+		// Test that Parse() without default fields returns an error
+		_, err := Parse("test")
+		if err == nil {
+			t.Fatal("Parse() should return error when no default fields are configured")
 		}
 	})
 

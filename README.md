@@ -22,8 +22,8 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 
 - **Lucene-style syntax**: Write queries in familiar Lucene format
 - **Field matching**: Exact matches, wildcard patterns, and regex support
-- **Free text search**: Full-text search with MongoDB `$text` operator
-- **Mixed queries**: Combine text search with field-specific queries
+- **Default fields**: Search across multiple fields using regex patterns (recommended)
+- **Mixed queries**: Combine free text search with field-specific queries
 - **Nested data**: Dot notation for nested fields and array search
 - **Logical operators**: AND, OR, NOT with parentheses grouping
 - **Date & number queries**: Range queries and comparisons with type-aware parsing
@@ -44,7 +44,7 @@ package main
 import (
     "fmt"
     "log"
-    
+
     "github.com/kyle-williams-1/bsonic"
 )
 
@@ -54,7 +54,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    
+
     fmt.Printf("BSON: %+v\n", query)
     // Output: BSON: {"age": 25, "name": "john"}
 }
@@ -133,24 +133,53 @@ query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
 
-### Free Text Search
+### Default Fields (Recommended)
+
+Bsonic supports default fields for free text queries, allowing you to search across specific fields without using MongoDB's text search operator. This provides more flexibility and doesn't require text indexes.
 
 ```go
-// Quoted text search
-query, _ := bsonic.Parse(`"John Doe"`)
-// BSON: {"$text": {"$search": "\"John Doe\""}}
+// Simple default field search
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john")
+// BSON: {"name": {"$regex": "john", "$options": "i"}}
 
-// Unquoted text search
-query, _ := bsonic.Parse("software engineer")
-// BSON: {"$text": {"$search": "software engineer"}}
+// Search across multiple default fields
+query, _ := bsonic.ParseWithDefaults([]string{"name", "description"}, "engineer")
+// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
 
-// Mixed text and field queries
-query, _ := bsonic.Parse(`"John Doe" AND active:true`)
-// BSON: {"$and": [{"$text": {"$search": "\"John Doe\""}}, {"active": true}]}
+// Default fields with wildcards
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "jo*")
+// BSON: {"name": {"$regex": "^jo.*$", "$options": "i"}}
 
-// Text search with complex field conditions
-query, _ := bsonic.Parse(`"software engineer" AND (role:admin OR department:engineering)`)
-// BSON: {"$and": [{"$text": {"$search": "\"software engineer\""}}, {"$or": [{"role": "admin"}, {"department": "engineering"}]}]}
+// Default fields with regex patterns (case-sensitive)
+query, _ := bsonic.ParseWithDefaults([]string{"email"}, "/.*@example\\.com/")
+// BSON: {"email": {"$regex": ".*@example\\.com"}}
+
+// Mixed free text and field queries
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND age:25")
+// BSON: {"age": 25, "name": {"$regex": "john", "$options": "i"}}
+
+// With complex field conditions
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND (role:admin OR department:engineering)")
+// BSON: {"$and": [{"$or": [{"role": "admin"}, {"department": "engineering"}]}, {"name": {"$regex": "john", "$options": "i"}}]}
+```
+
+#### Configuration-Based Default Fields
+
+You can also configure default fields at the parser level:
+
+```go
+import (
+    "github.com/kyle-williams-1/bsonic"
+    "github.com/kyle-williams-1/bsonic/config"
+)
+
+// Configure parser with default fields
+cfg := config.Default().
+    WithDefaultFields([]string{"name", "description"}).
+
+parser, _ := bsonic.NewWithConfig(cfg)
+query, _ := parser.Parse("engineer")
+// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
 ```
 
 ### Logical Operators & Grouping
