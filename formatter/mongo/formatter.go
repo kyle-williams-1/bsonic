@@ -34,6 +34,20 @@ func (f *MongoFormatter) Format(ast interface{}) (bson.M, error) {
 	return f.expressionToBSON(participleQuery.Expression), nil
 }
 
+// FormatWithDefaults converts a parsed query AST into a BSON document using default fields for unstructured queries.
+func (f *MongoFormatter) FormatWithDefaults(ast interface{}, defaultFields []string) (bson.M, error) {
+	// Type assert to the ParticipleQuery AST type from the Lucene parser
+	participleQuery, ok := ast.(*lucene.ParticipleQuery)
+	if !ok {
+		return bson.M{}, fmt.Errorf("expected *lucene.ParticipleQuery AST, got %T", ast)
+	}
+
+	if participleQuery.Expression == nil {
+		return bson.M{}, nil
+	}
+	return f.expressionToBSONWithDefaults(participleQuery.Expression, defaultFields), nil
+}
+
 // parseValue parses a value string, handling wildcards, dates, and special syntax
 func (f *MongoFormatter) parseValue(valueStr string) (interface{}, error) {
 	// Create a chain of value parsers
@@ -379,16 +393,26 @@ func (f *MongoFormatter) expressionToBSON(expr *lucene.ParticipleExpression) bso
 		return f.andExpressionToBSON(expr.Or[0])
 	}
 
-	// Check if all OR conditions are text searches
-	textSearches := f.extractTextSearches(expr.Or)
-	if len(textSearches) > 0 && len(textSearches) == len(expr.Or) {
-		// All conditions are text searches, combine them into a single $text expression
-		return f.combineTextSearches(textSearches)
+	var conditions []bson.M
+	for _, andExpr := range expr.Or {
+		conditions = append(conditions, f.andExpressionToBSON(andExpr))
+	}
+	return bson.M{"$or": conditions}
+}
+
+// expressionToBSONWithDefaults converts a ParticipleExpression to BSON using default fields for unstructured queries
+func (f *MongoFormatter) expressionToBSONWithDefaults(expr *lucene.ParticipleExpression, defaultFields []string) bson.M {
+	if len(expr.Or) == 0 {
+		return bson.M{}
+	}
+
+	if len(expr.Or) == 1 {
+		return f.andExpressionToBSONWithDefaults(expr.Or[0], defaultFields)
 	}
 
 	var conditions []bson.M
 	for _, andExpr := range expr.Or {
-		conditions = append(conditions, f.andExpressionToBSON(andExpr))
+		conditions = append(conditions, f.andExpressionToBSONWithDefaults(andExpr, defaultFields))
 	}
 	return bson.M{"$or": conditions}
 }
@@ -404,6 +428,20 @@ func (f *MongoFormatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpres
 	}
 
 	directFields, conditions := f.processAndExpressions(andExpr.And)
+	return f.buildAndResult(directFields, conditions)
+}
+
+// andExpressionToBSONWithDefaults converts a ParticipleAndExpression to BSON using default fields for unstructured queries
+func (f *MongoFormatter) andExpressionToBSONWithDefaults(andExpr *lucene.ParticipleAndExpression, defaultFields []string) bson.M {
+	if len(andExpr.And) == 0 {
+		return bson.M{}
+	}
+
+	if len(andExpr.And) == 1 {
+		return f.notExpressionToBSONWithDefaults(andExpr.And[0], defaultFields)
+	}
+
+	directFields, conditions := f.processAndExpressionsWithDefaults(andExpr.And, defaultFields)
 	return f.buildAndResult(directFields, conditions)
 }
 
@@ -469,6 +507,22 @@ func (f *MongoFormatter) notExpressionToBSON(notExpr *lucene.ParticipleNotExpres
 	return f.notExpressionToBSONWithContext(notExpr, false)
 }
 
+// notExpressionToBSONWithDefaults converts a ParticipleNotExpression to BSON using default fields for unstructured queries
+func (f *MongoFormatter) notExpressionToBSONWithDefaults(notExpr *lucene.ParticipleNotExpression, defaultFields []string) bson.M {
+	return f.notExpressionToBSONWithDefaultsAndContext(notExpr, defaultFields, false)
+}
+
+// notExpressionToBSONWithDefaultsAndContext converts a ParticipleNotExpression to BSON with context using default fields
+func (f *MongoFormatter) notExpressionToBSONWithDefaultsAndContext(notExpr *lucene.ParticipleNotExpression, defaultFields []string, inNotContext bool) bson.M {
+	if notExpr.Not != nil {
+		// Handle NOT operation
+		childBSON := f.notExpressionToBSONWithDefaultsAndContext(notExpr.Not, defaultFields, true)
+		return f.negateBSON(childBSON)
+	}
+
+	return f.termToBSONWithDefaultsAndContext(notExpr.Term, defaultFields, inNotContext)
+}
+
 // notExpressionToBSONWithContext converts a ParticipleNotExpression to BSON with context
 func (f *MongoFormatter) notExpressionToBSONWithContext(notExpr *lucene.ParticipleNotExpression, inNotContext bool) bson.M {
 	if notExpr.Not != nil {
@@ -487,7 +541,9 @@ func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNo
 	}
 
 	if term.FreeText != nil {
-		return f.freeTextToBSON(term.FreeText)
+		// Unstructured queries require default fields - this should not happen in the regular Format method
+		// Return empty BSON since this should not occur in the regular Format method
+		return bson.M{}
 	}
 
 	if term.Group != nil {
@@ -497,17 +553,55 @@ func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, inNo
 	return bson.M{}
 }
 
+// termToBSONWithDefaultsAndContext converts a ParticipleTerm to BSON with context using default fields
+func (f *MongoFormatter) termToBSONWithDefaultsAndContext(term *lucene.ParticipleTerm, defaultFields []string, inNotContext bool) bson.M {
+	if term.FieldValue != nil {
+		return f.fieldValueToBSONWithDefaultsAndContext(term.FieldValue, defaultFields, inNotContext)
+	}
+
+	if term.FreeText != nil {
+		return f.freeTextToBSONWithDefaults(term.FreeText, defaultFields)
+	}
+
+	if term.Group != nil {
+		return f.expressionToBSONWithDefaults(term.Group.Expression, defaultFields)
+	}
+
+	return bson.M{}
+}
+
 // fieldValueToBSONWithContext converts a ParticipleFieldValue to BSON with context
 func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, inNotContext bool) bson.M {
 	// Check if this field value should be split into field:value + free text
-	if fieldValue, freeText := fv.SplitIntoFieldAndText(); fieldValue != nil {
+	if fieldValue, _ := fv.SplitIntoFieldAndText(); fieldValue != nil {
 		// Convert field value to BSON
 		fieldBSON := f.fieldValueToBSONWithContext(fieldValue, inNotContext)
 
-		// Convert free text to BSON
-		freeTextBSON := f.freeTextToBSON(freeText)
+		// Unstructured queries require default fields - this should not happen in the regular Format method
+		// Return the field BSON only since this should not occur in the regular Format method
+		return fieldBSON
+	}
 
-		// Return as $and with field:value and $text search
+	// Single term or other value type - handle normally
+	valueStr := f.extractValueString(fv.Value)
+	value, err := f.parseValue(valueStr)
+	if err != nil {
+		value = valueStr
+	}
+	return bson.M{fv.Field: value}
+}
+
+// fieldValueToBSONWithDefaultsAndContext converts a ParticipleFieldValue to BSON with context using default fields
+func (f *MongoFormatter) fieldValueToBSONWithDefaultsAndContext(fv *lucene.ParticipleFieldValue, defaultFields []string, inNotContext bool) bson.M {
+	// Check if this field value should be split into field:value + free text
+	if fieldValue, freeText := fv.SplitIntoFieldAndText(); fieldValue != nil {
+		// Convert field value to BSON
+		fieldBSON := f.fieldValueToBSONWithDefaultsAndContext(fieldValue, defaultFields, inNotContext)
+
+		// Convert free text to BSON using default fields
+		freeTextBSON := f.freeTextToBSONWithDefaults(freeText, defaultFields)
+
+		// Return as $and with field:value and free text search
 		return bson.M{
 			"$and": []bson.M{
 				fieldBSON,
@@ -601,9 +695,10 @@ func (f *MongoFormatter) extractRegex(value *lucene.ParticipleValue) (string, bo
 	return "", false
 }
 
-// freeTextToBSON converts a ParticipleFreeText to BSON using MongoDB's $text search
-func (f *MongoFormatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
+// freeTextToBSONWithDefaults converts a ParticipleFreeText to BSON using default fields for unstructured queries
+func (f *MongoFormatter) freeTextToBSONWithDefaults(ft *lucene.ParticipleFreeText, defaultFields []string) bson.M {
 	var valueStr string
+	var isRegex bool
 
 	if ft.QuotedValue != nil {
 		// Handle quoted values
@@ -612,91 +707,20 @@ func (f *MongoFormatter) freeTextToBSON(ft *lucene.ParticipleFreeText) bson.M {
 		} else if ft.QuotedValue.SingleString != nil {
 			valueStr = *ft.QuotedValue.SingleString
 		}
-		// For quoted values, keep them quoted for exact phrase matching
-		return bson.M{"$text": bson.M{"$search": fmt.Sprintf("\"%s\"", valueStr)}}
 	} else if ft.UnquotedValue != nil {
 		// Handle unquoted values
 		valueStr = strings.Join(ft.UnquotedValue.TextTerms, " ")
-		// For unquoted values, use them as-is for term-based search
-		return bson.M{"$text": bson.M{"$search": valueStr}}
+	} else if ft.RegexValue != nil {
+		// Handle regex values - strip the leading and trailing slashes
+		valueStr = (*ft.RegexValue)[1 : len(*ft.RegexValue)-1]
+		isRegex = true
 	}
 
-	// Fallback (should not happen with proper grammar)
-	return bson.M{"$text": bson.M{"$search": ""}}
-}
-
-// extractTextSearches extracts text search strings from OR conditions
-func (f *MongoFormatter) extractTextSearches(andExpressions []*lucene.ParticipleAndExpression) []string {
-	var textSearches []string
-
-	for _, andExpr := range andExpressions {
-		if len(andExpr.And) == 1 {
-			// Check if this is a simple text search
-			bsonResult := f.notExpressionToBSON(andExpr.And[0])
-			if textSearch, isTextSearch := f.extractTextSearchString(bsonResult); isTextSearch {
-				textSearches = append(textSearches, textSearch)
-			}
-		}
+	// Use default fields with regex search
+	if isRegex {
+		return f.createDefaultFieldRegexSearch(valueStr, defaultFields)
 	}
-
-	return textSearches
-}
-
-// extractTextSearchString extracts the search string from a $text BSON expression
-func (f *MongoFormatter) extractTextSearchString(bsonResult bson.M) (string, bool) {
-	textOp, hasText := bsonResult["$text"]
-	if !hasText {
-		return "", false
-	}
-
-	textMap, ok := textOp.(bson.M)
-	if !ok {
-		return "", false
-	}
-
-	search, hasSearch := textMap["$search"]
-	if !hasSearch {
-		return "", false
-	}
-
-	searchStr, ok := search.(string)
-	if !ok {
-		return "", false
-	}
-
-	return f.processSearchString(searchStr), true
-}
-
-// processSearchString processes the search string by removing quotes if present
-func (f *MongoFormatter) processSearchString(searchStr string) string {
-	// For quoted searches, remove the quotes for combination
-	if f.isQuotedString(searchStr) {
-		return searchStr[1 : len(searchStr)-1]
-	}
-	// For unquoted searches, return as-is
-	return searchStr
-}
-
-// isQuotedString checks if a string is wrapped in quotes
-func (f *MongoFormatter) isQuotedString(s string) bool {
-	return len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"'
-}
-
-// combineTextSearches combines multiple text search strings into a single $text expression
-func (f *MongoFormatter) combineTextSearches(textSearches []string) bson.M {
-	// For MongoDB text search, multiple unquoted terms are OR'd by default
-	// We need to extract individual words from each phrase for OR behavior
-	var allTerms []string
-	for _, search := range textSearches {
-		// Split each search phrase into individual words
-		words := strings.Fields(search)
-		allTerms = append(allTerms, words...)
-	}
-
-	// Join all terms with spaces for OR behavior
-	combinedSearch := strings.Join(allTerms, " ")
-
-	return bson.M{"$text": bson.M{"$search": combinedSearch}}
+	return f.createDefaultFieldSearch(valueStr, defaultFields)
 }
 
 // negateBSON negates a BSON condition using De Morgan's law
@@ -770,4 +794,117 @@ func (f *MongoFormatter) hasComplexFieldValues(condition bson.M) bool {
 		}
 	}
 	return false
+}
+
+// createDefaultFieldSearch creates a BSON query that searches for the value in all default fields
+func (f *MongoFormatter) createDefaultFieldSearch(valueStr string, defaultFields []string) bson.M {
+	if len(defaultFields) == 0 {
+		return bson.M{}
+	}
+
+	if len(defaultFields) == 1 {
+		// Single field - create direct regex search
+		return f.createFieldRegexSearch(defaultFields[0], valueStr)
+	}
+
+	// Multiple fields - create OR query
+	var conditions []bson.M
+	for _, field := range defaultFields {
+		conditions = append(conditions, f.createFieldRegexSearch(field, valueStr))
+	}
+	return bson.M{"$or": conditions}
+}
+
+// createDefaultFieldRegexSearch creates a BSON query that searches for the regex pattern in all default fields
+func (f *MongoFormatter) createDefaultFieldRegexSearch(pattern string, defaultFields []string) bson.M {
+	if len(defaultFields) == 0 {
+		return bson.M{}
+	}
+
+	if len(defaultFields) == 1 {
+		// Single field - create direct regex search
+		return bson.M{defaultFields[0]: bson.M{"$regex": pattern}}
+	}
+
+	// Multiple fields - create OR query
+	var conditions []bson.M
+	for _, field := range defaultFields {
+		conditions = append(conditions, bson.M{field: bson.M{"$regex": pattern}})
+	}
+	return bson.M{"$or": conditions}
+}
+
+// createFieldRegexSearch creates a regex search for a specific field
+func (f *MongoFormatter) createFieldRegexSearch(field, valueStr string) bson.M {
+	// Reuse existing parsing logic
+	regexBSON, err := f.parseValueToRegex(valueStr)
+	if err != nil {
+		// Fallback to plain text with regex escaping
+		escapedValue := f.escapeRegex(valueStr)
+		regexBSON = bson.M{"$regex": escapedValue, "$options": "i"}
+	}
+
+	// Apply the regex to the specific field
+	return bson.M{field: regexBSON}
+}
+
+// parseValueToRegex parses a value string and returns a regex BSON query
+func (f *MongoFormatter) parseValueToRegex(valueStr string) (bson.M, error) {
+	// Check if the value contains wildcards
+	if strings.Contains(valueStr, "*") {
+		return f.parseWildcard(valueStr)
+	}
+
+	// Check if the value is a regex pattern
+	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
+		return f.parseRegex(valueStr)
+	}
+
+	// For plain text, we need to escape it and make it case-insensitive
+	escapedValue := f.escapeRegex(valueStr)
+	return bson.M{"$regex": escapedValue, "$options": "i"}, nil
+}
+
+// escapeRegex escapes special regex characters in a string
+func (f *MongoFormatter) escapeRegex(s string) string {
+	// Escape special regex characters
+	escaped := strings.ReplaceAll(s, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "^", "\\^")
+	escaped = strings.ReplaceAll(escaped, "$", "\\$")
+	escaped = strings.ReplaceAll(escaped, ".", "\\.")
+	escaped = strings.ReplaceAll(escaped, "|", "\\|")
+	escaped = strings.ReplaceAll(escaped, "?", "\\?")
+	escaped = strings.ReplaceAll(escaped, "*", "\\*")
+	escaped = strings.ReplaceAll(escaped, "+", "\\+")
+	escaped = strings.ReplaceAll(escaped, "(", "\\(")
+	escaped = strings.ReplaceAll(escaped, ")", "\\)")
+	escaped = strings.ReplaceAll(escaped, "[", "\\[")
+	escaped = strings.ReplaceAll(escaped, "]", "\\]")
+	escaped = strings.ReplaceAll(escaped, "{", "\\{")
+	escaped = strings.ReplaceAll(escaped, "}", "\\}")
+	return escaped
+}
+
+// processAndExpressionsWithDefaults processes all AND expressions and separates simple fields from complex conditions using default fields
+func (f *MongoFormatter) processAndExpressionsWithDefaults(expressions []*lucene.ParticipleNotExpression, defaultFields []string) (bson.M, []bson.M) {
+	var conditions []bson.M
+	directFields := bson.M{}
+	hasComplexExpressions := false
+
+	for _, notExpr := range expressions {
+		childBSON := f.notExpressionToBSONWithDefaults(notExpr, defaultFields)
+
+		if f.isSimpleFieldValue(childBSON) {
+			if f.canMergeField(directFields, childBSON, hasComplexExpressions) {
+				f.mergeField(directFields, childBSON)
+			} else {
+				conditions = append(conditions, childBSON)
+			}
+		} else {
+			hasComplexExpressions = true
+			conditions = append(conditions, childBSON)
+		}
+	}
+
+	return directFields, conditions
 }

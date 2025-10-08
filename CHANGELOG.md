@@ -5,14 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0-beta.1]
+
+### Added
+
+- **Default fields support** for free text queries without requiring text indexes
+- `ParseWithDefaults()` function for specifying default fields per query
+- `WithDefaultFields()` config method for parser-level default field configuration
+- Wildcard and regex support in default field queries
+
+### Removed
+
+- **MongoDB text search support** - Removed `$text` operator functionality, replaced with default field searches for better Lucene compatibility and performance
+- `WithEnableTextSearch()` config method
+
+### Changed
+
+- Free text queries with default fields use case-insensitive regex by default
+- ParseWithDefaults takes priority over config-level default fields
+
 ## [v0.6.0-beta.1]
 
 ### Added
+
 - **Regex pattern support** with Lucene-style syntax `field:/regex/`
 - **MongoDB regex output** with case-sensitive matching (like Lucene default)
 - **Regex with logical operators** for complex query combinations
 
 ### Features Implemented
+
 - `name:/john/` - Basic regex patterns
 - `email:/.*@example\\.com/` - Complex regex with escaped characters
 - `phone:/\\d{3}-\\d{3}-\\d{4}/` - Regex with digit matching
@@ -20,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `name:/john/ OR email:/.*@example\\.com/` - Regex with logical operators
 
 ### Technical Improvements
+
 - Added `Regex` field to `ParticipleValue` struct for regex pattern recognition
 - Enhanced lexer with regex token pattern `/([^/\\]|\\.)*/`
 - Added `tryParseRegex()` and `parseRegex()` methods to formatter
@@ -27,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added comprehensive test coverage for regex functionality
 
 ### Documentation
+
 - Updated README with regex examples and improved readability
 - Streamlined documentation structure and removed redundancy
 - Added regex feature to features list and query syntax sections
@@ -34,20 +57,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.5.0-beta.1]
 
 ### Added
+
 - **Participle integration** for robust parsing and grammar handling
 - **Developer documentation** with comprehensive architecture overview
 
 ### Changed
+
 - **Refactored parsing engine** to use Participle for lexical analysis and AST generation
 - **Improved error handling** with better syntax error messages from Participle
 
 ### Technical Improvements
+
 - Migrated from custom lexer to Participle lexer for better token recognition
 - Implemented proper grammar hierarchy with Participle struct tags
 - Added comprehensive AST to BSON conversion pipeline
 - Maintained backward compatibility with existing API
 
 ### Documentation
+
 - Added `DEVELOPER_README.md` with detailed technical documentation
 - Documented Participle integration patterns and custom implementation details
 - Added visual flow diagrams and code distribution breakdown
@@ -55,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.4.0-beta.1]
 
 ### Added
+
 - **Number range queries** with Lucene-style syntax
 - **Numeric comparison operators** (`>`, `<`, `>=`, `<=`)
 - **Range syntax** with `[start TO end]` for numeric fields
@@ -63,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Complex number queries** combining ranges with logical operators
 
 ### Features Implemented
+
 - `age:[18 TO 65]` - Number range queries using `$gte` and `$lte`
 - `price:[10.50 TO 99.99]` - Decimal number ranges
 - `score:>85` - Greater than comparisons using `$gt`
@@ -76,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `price:[0 TO 100] OR rating:[4 TO 5]` - Multiple number ranges with OR
 
 ### API Changes
+
 - Enhanced `parseValue()` method to detect and parse number ranges
 - Added `isNumberRange()` and `isNumberComparison()` detection methods
 - Added `parseNumberRange()` and `parseNumberComparison()` parsing methods
@@ -83,12 +113,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced type detection for better numeric vs date parsing
 
 ### Documentation
+
 - Updated README.md with comprehensive number range examples
 - Added number range features to feature list
 - Updated integration tests with real MongoDB number range queries
 - Enhanced examples with number range demonstrations
 
 ### Testing
+
 - Added comprehensive unit tests for number range functionality
 - Added integration tests for invalid number query handling
 - All existing tests continue to pass (no regressions)
@@ -96,6 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.3.0-beta.1]
 
 ### Added
+
 - **Full-text search support** with MongoDB `$text` operator
 - **Configurable search modes** (`SearchModeDisabled`, `SearchModeText`)
 - **Mixed queries** combining text search with field searches
@@ -103,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MongoDB text index requirements** documentation
 
 ### Features Implemented
+
 - `engineer software` - Pure text search using `$text` operator
 - `engineer name:john` - Mixed queries combining text and field search
 - `software engineer role:admin` - Multiple text terms with field filtering
@@ -111,18 +145,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `engineer (role:admin AND age:25)` - Text search with grouped field conditions
 
 ### API Changes
+
 - Added `NewWithTextSearch()` constructor for text search enabled parser
 - Added `SetSearchMode(mode SearchMode)` method for runtime configuration
 - Added `SearchMode` enum with `SearchModeDisabled` and `SearchModeText` options
 - Made `HandleTextSearchNode()` public for advanced usage
 
 ### Documentation
+
 - Updated README with text search examples and configuration
 - Added MongoDB text index setup instructions
 - Added mixed query usage examples
 - Enhanced API documentation with search mode examples
 
 ### Technical Improvements
+
 - Refactored query parsing logic for better separation of concerns
 - Improved cyclomatic complexity through helper methods and structs
 - Enhanced tokenization for mixed query support
@@ -132,6 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.2.0-beta.1]
 
 ### Added
+
 - Initial implementation of Lucene-style syntax parser
 - Basic field matching (exact matches and wildcards)
 - Support for dot notation for nested fields
@@ -146,6 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Makefile for development tasks
 
 ### Features Implemented
+
 - `name:john` - Exact field matching
 - `name:jo*` - Wildcard matching with regex
 - `name:"john doe"` - Quoted string values
@@ -160,6 +199,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `user.profile.email:john@example.com` - Dot notation for nested fields
 
 ### Planned Features
+
 - Array search optimization
 - Range queries (age:[18 TO 65])
 - Fuzzy search

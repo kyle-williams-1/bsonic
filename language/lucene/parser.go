@@ -72,6 +72,7 @@ func (fv *ParticipleFieldValue) SplitIntoFieldAndText() (*ParticipleFieldValue, 
 type ParticipleFreeText struct {
 	QuotedValue   *ParticipleQuotedValue   `@@`
 	UnquotedValue *ParticipleUnquotedValue `| @@`
+	RegexValue    *string                  `| @Regex`
 }
 
 // ParticipleQuotedValue represents quoted values for free text search
