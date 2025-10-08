@@ -2063,6 +2063,106 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:          "Free text with three default fields",
+			query:         "john",
+			defaultFields: []string{"name", "description", "title"},
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex":   "john",
+							"$options": "i",
+						},
+					},
+					{
+						"description": bson.M{
+							"$regex":   "john",
+							"$options": "i",
+						},
+					},
+					{
+						"title": bson.M{
+							"$regex":   "john",
+							"$options": "i",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "Free text wildcard with multiple default fields",
+			query:         "john*",
+			defaultFields: []string{"name", "description"},
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex":   "^john.*",
+							"$options": "i",
+						},
+					},
+					{
+						"description": bson.M{
+							"$regex":   "^john.*",
+							"$options": "i",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "Free text regex with multiple default fields",
+			query:         "/john.*/",
+			defaultFields: []string{"name", "description"},
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex": "john.*",
+						},
+					},
+					{
+						"description": bson.M{
+							"$regex": "john.*",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "Free text with four default fields",
+			query:         "search",
+			defaultFields: []string{"name", "description", "title", "content"},
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex":   "search",
+							"$options": "i",
+						},
+					},
+					{
+						"description": bson.M{
+							"$regex":   "search",
+							"$options": "i",
+						},
+					},
+					{
+						"title": bson.M{
+							"$regex":   "search",
+							"$options": "i",
+						},
+					},
+					{
+						"content": bson.M{
+							"$regex":   "search",
+							"$options": "i",
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
