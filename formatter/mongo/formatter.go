@@ -512,9 +512,9 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 		// Convert free text to BSON using default fields
 		freeTextBSON := f.freeTextToBSONUnstructured(freeText, defaultFields)
 
-		// Return as $and with field:value and free text search
+		// Return as $or with field:value and free text search (default behavior for mixed queries)
 		return bson.M{
-			"$and": []bson.M{
+			"$or": []bson.M{
 				fieldBSON,
 				freeTextBSON,
 			},
@@ -559,19 +559,24 @@ func (f *MongoFormatter) extractValueString(value *lucene.ParticipleValue) strin
 
 // freeTextToBSONUnstructured converts a ParticipleFreeText to BSON using default fields for unstructured queries
 func (f *MongoFormatter) freeTextToBSONUnstructured(ft *lucene.ParticipleFreeText, defaultFields []string) bson.M {
-	var valueStr string
-	var isRegex bool
-
 	if ft.QuotedValue != nil {
-		// Handle quoted values
+		// Handle quoted values as a single term
+		var valueStr string
 		if ft.QuotedValue.String != nil {
 			valueStr = *ft.QuotedValue.String
 		} else if ft.QuotedValue.SingleString != nil {
 			valueStr = *ft.QuotedValue.SingleString
 		}
+		return f.createDefaultFieldSearch(valueStr, defaultFields)
 	} else if ft.UnquotedValue != nil {
-		// Handle unquoted values
-		valueStr = strings.Join(ft.UnquotedValue.TextTerms, " ")
+		// Handle unquoted values - each word searches default fields with OR
+		words := ft.UnquotedValue.TextTerms
+		if len(words) == 1 {
+			// Single word - direct search
+			return f.createDefaultFieldSearch(words[0], defaultFields)
+		}
+		// Multiple words - each word searches default fields, all ORed together
+		return f.createMultiWordDefaultFieldSearch(words, defaultFields)
 	} else if ft.RegexValue != nil {
 		// Handle regex values - strip the leading and trailing slashes and anchor
 		pattern := (*ft.RegexValue)[1 : len(*ft.RegexValue)-1]
@@ -582,15 +587,10 @@ func (f *MongoFormatter) freeTextToBSONUnstructured(ft *lucene.ParticipleFreeTex
 		if !strings.HasSuffix(pattern, "$") {
 			pattern = pattern + "$"
 		}
-		valueStr = pattern
-		isRegex = true
+		return f.createDefaultFieldRegexSearch(pattern, defaultFields)
 	}
 
-	// Use default fields with regex search
-	if isRegex {
-		return f.createDefaultFieldRegexSearch(valueStr, defaultFields)
-	}
-	return f.createDefaultFieldSearch(valueStr, defaultFields)
+	return bson.M{}
 }
 
 // negateBSON negates a BSON condition using De Morgan's law
@@ -682,6 +682,27 @@ func (f *MongoFormatter) createDefaultFieldSearch(valueStr string, defaultFields
 	for _, field := range defaultFields {
 		conditions = append(conditions, f.createFieldRegexSearch(field, valueStr))
 	}
+	return bson.M{"$or": conditions}
+}
+
+// createMultiWordDefaultFieldSearch creates a BSON query for multiple words across default fields
+// Each word is searched against all default fields, all ORed together
+func (f *MongoFormatter) createMultiWordDefaultFieldSearch(words []string, defaultFields []string) bson.M {
+	if len(defaultFields) == 0 || len(words) == 0 {
+		return bson.M{}
+	}
+
+	var conditions []bson.M
+	for _, word := range words {
+		for _, field := range defaultFields {
+			conditions = append(conditions, f.createFieldRegexSearch(field, word))
+		}
+	}
+
+	if len(conditions) == 1 {
+		return conditions[0]
+	}
+
 	return bson.M{"$or": conditions}
 }
 

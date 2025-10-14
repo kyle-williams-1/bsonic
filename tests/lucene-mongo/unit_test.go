@@ -107,9 +107,9 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 			t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
 		}
 
-		// Should be parsed as name:John AND name:Doe (default field with case insensitive match)
+		// Should be parsed as name:John OR name:Doe (default field with case insensitive match)
 		expected := bson.M{
-			"$and": []bson.M{
+			"$or": []bson.M{
 				{"name": "John"},
 				{"name": bson.M{"$regex": "^Doe$", "$options": "i"}},
 			},
@@ -459,12 +459,12 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				name:  "NOT with multi-word field value (should split)",
 				query: "NOT name:Bob Johnson",
 				expected: bson.M{
-					"$or": []bson.M{
+					"$and": []bson.M{
 						{"name": bson.M{"$ne": "Bob"}},
 						{"name": bson.M{"$ne": bson.M{"$regex": "^Johnson$", "$options": "i"}}},
 					},
 				},
-				desc: "NOT operation with multi-word field value should split into NOT (field:value AND default field terms)",
+				desc: "NOT operation with multi-word field value: NOT (A OR B) becomes (NOT A AND NOT B) by De Morgan's law",
 			},
 		}
 
@@ -1842,9 +1842,19 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			name:  "Unquoted multiple words free text search",
 			query: `John Doe`,
 			expected: bson.M{
-				"name": bson.M{
-					"$regex":   "^John Doe$",
-					"$options": "i",
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex":   "^John$",
+							"$options": "i",
+						},
+					},
+					{
+						"name": bson.M{
+							"$regex":   "^Doe$",
+							"$options": "i",
+						},
+					},
 				},
 			},
 		},
@@ -1943,6 +1953,46 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 				"name": bson.M{
 					"$regex":   "^John$",
 					"$options": "i",
+				},
+			},
+		},
+		{
+			name:  "Mixed field query with free text",
+			query: `role:admin engineer`,
+			expected: bson.M{
+				"$or": []bson.M{
+					{"role": "admin"},
+					{
+						"name": bson.M{
+							"$regex":   "^engineer$",
+							"$options": "i",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "Mixed field query with multiple free text words",
+			query: `role:admin software engineer`,
+			expected: bson.M{
+				"$or": []bson.M{
+					{"role": "admin"},
+					{
+						"$or": []bson.M{
+							{
+								"name": bson.M{
+									"$regex":   "^software$",
+									"$options": "i",
+								},
+							},
+							{
+								"name": bson.M{
+									"$regex":   "^engineer$",
+									"$options": "i",
+								},
+							},
+						},
+					},
 				},
 			},
 		},

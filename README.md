@@ -135,9 +135,15 @@ query, _ := bsonic.Parse("tags:mongodb")
 
 ### Case Sensitivity & Search Behavior
 
-Bsonic handles case sensitivity differently based on the query type:
+Bsonic handles case sensitivity and multi-word behavior based on the query type:
 
-- **Free text searches** (no regex or wildcards): Case-insensitive by default
+- **Free text searches** (no regex or wildcards):
+  - Case-insensitive by default
+  - Multiple unquoted words are ORed together (e.g., `john doe` matches documents where any default field contains "john" OR "doe")
+  - Quoted phrases are treated as single terms (e.g., `"john doe"` matches the exact phrase)
+- **Mixed queries** (field:value followed by free text without explicit AND/OR):
+  - Default to OR behavior (e.g., `name:john admin` becomes `name:john OR role:admin`)
+  - Use explicit AND/OR operators to override (e.g., `name:john AND admin` for AND behavior)
 - **Wildcard patterns** (`*`, `?`): Case-sensitive
 - **Regex patterns** (between `/` delimiters): Case-sensitive, with start (`^`) and end (`$`) anchors automatically added
 
@@ -148,13 +154,25 @@ Bsonic handles case sensitivity differently based on the query type:
 Bsonic supports default fields for free text queries, allowing you to search across specific fields without using MongoDB's text search operator. This provides more flexibility and doesn't require text indexes.
 
 ```go
-// Simple default field search
+// Simple default field search (single word)
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john")
-// BSON: {"name": {"$regex": "john", "$options": "i"}}
+// BSON: {"name": {"$regex": "^john$", "$options": "i"}}
+
+// Multiple unquoted words - each word searches default fields with OR
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john doe")
+// BSON: {"$or": [{"name": {"$regex": "^john$", "$options": "i"}}, {"name": {"$regex": "^doe$", "$options": "i"}}]}
+
+// Quoted phrase - treated as single term
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, `"john doe"`)
+// BSON: {"name": {"$regex": "^john doe$", "$options": "i"}}
 
 // Search across multiple default fields
 query, _ := bsonic.ParseWithDefaults([]string{"name", "description"}, "engineer")
-// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^engineer$", "$options": "i"}}, {"description": {"$regex": "^engineer$", "$options": "i"}}]}
+
+// Multiple words with multiple default fields
+query, _ := bsonic.ParseWithDefaults([]string{"name", "title"}, "software engineer")
+// BSON: {"$or": [{"name": {"$regex": "^software$", "$options": "i"}}, {"title": {"$regex": "^software$", "$options": "i"}}, {"name": {"$regex": "^engineer$", "$options": "i"}}, {"title": {"$regex": "^engineer$", "$options": "i"}}]}
 
 // Default fields with wildcards (case-sensitive)
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "Jo*")
@@ -164,13 +182,13 @@ query, _ := bsonic.ParseWithDefaults([]string{"name"}, "Jo*")
 query, _ := bsonic.ParseWithDefaults([]string{"email"}, "/.*@example\\.com/")
 // BSON: {"email": {"$regex": "^.*@example\\.com$"}}
 
-// Mixed free text and field queries
-query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND age:25")
-// BSON: {"age": 25, "name": {"$regex": "john", "$options": "i"}}
+// Mixed free text and field queries (defaults to OR)
+query, _ := bsonic.ParseWithDefaults([]string{"role"}, "name:john admin")
+// BSON: {"$or": [{"name": "john"}, {"role": {"$regex": "^admin$", "$options": "i"}}]}
 
 // With complex field conditions
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND (role:admin OR department:engineering)")
-// BSON: {"$and": [{"$or": [{"role": "admin"}, {"department": "engineering"}]}, {"name": {"$regex": "john", "$options": "i"}}]}
+// BSON: {"$and": [{"$or": [{"role": "admin"}, {"department": "engineering"}]}, {"name": {"$regex": "^john$", "$options": "i"}}]}
 ```
 
 #### Configuration-Based Default Fields
@@ -189,7 +207,7 @@ cfg := config.Default().
 
 parser, _ := bsonic.NewWithConfig(cfg)
 query, _ := parser.Parse("engineer")
-// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^engineer$", "$options": "i"}}, {"description": {"$regex": "^engineer$", "$options": "i"}}]}
 ```
 
 ### Logical Operators & Grouping

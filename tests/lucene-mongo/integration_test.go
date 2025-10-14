@@ -746,6 +746,11 @@ func TestDefaultFieldsSearch(t *testing.T) {
 			expected: 1, // Should match John Doe in name field
 		},
 		{
+			name:     "multiple fields search unquoted",
+			query:    `John* Doe`,
+			expected: 1, // Should match John Doe but not Bob Johnson
+		},
+		{
 			name:     "default fields search with single quotes",
 			query:    `'Jane Smith'`,
 			expected: 1, // Should match Jane Smith in name field
@@ -776,9 +781,9 @@ func TestDefaultFieldsSearch(t *testing.T) {
 			expected: 2, // Should match John Doe and Bob Johnson
 		},
 		{
-			name:     "unquoted multiple words default fields search",
-			query:    `John Doe`,
-			expected: 1, // Should match John Doe
+			name:     "unquoted multiple words with partial match wildcards",
+			query:    `*John* *Doe*`,
+			expected: 2, // Should match "John Doe" and "Bob Johnson" (both contain John)
 		},
 		{
 			name:     "unquoted default fields search with field query (case sensitive)",
