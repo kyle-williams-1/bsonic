@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.0-beta.1]
+
+### Changed
+
+- **BREAKING: Regex patterns now anchored by default** - All regex queries (`field:/pattern/`) automatically add `^` and `$` anchors for exact matching, consistent with Lucene behavior
+- **BREAKING: Multiple unquoted words use OR logic** - Free text queries with multiple words (e.g., `john doe`) now search each word separately with OR, rather than as a single phrase, consistent with Lucene behavior
+- **BREAKING: Mixed queries default to OR** - Field:value followed by free text without explicit operators (e.g., `name:john admin`) now uses OR instead of AND
+- **Case sensitivity** - Free text searches are case-insensitive with `$options: "i"`, while regex patterns and wildcard patterns are case-sensitive
+
+### Migration
+
+Update queries to reflect new behavior:
+
+```go
+// Regex - for partial matches, use wildcards explicitly
+"name:/john/"           // Before: partial match, After: exact match "^john$"
+"name:/.*john.*/"       // Use this for partial matches
+
+// Multiple words - use quotes for exact phrases
+"john doe"              // Before: phrase match, After: john OR doe
+"\"john doe\""          // Use quotes for exact phrase matching
+
+// Mixed queries - use explicit AND for AND behavior
+"name:john admin"       // Before: AND, After: OR
+"name:john AND admin"   // Use explicit AND operator
+```
+
 ## [v0.8.0-beta.1]
 
 ### Added

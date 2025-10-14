@@ -112,13 +112,13 @@ bsonic/
 query, _ := bsonic.Parse("name:john")
 // BSON: {"name": "john"}
 
-// Wildcard patterns
-query, _ := bsonic.Parse("name:jo*")
-// BSON: {"name": {"$regex": "^jo.*", "$options": "i"}}
+// Wildcard patterns (case-sensitive)
+query, _ := bsonic.Parse("name:Jo*")
+// BSON: {"name": {"$regex": "^Jo.*"}}
 
-// Regex patterns (case-sensitive by default)
+// Regex patterns (case-sensitive, with anchors added)
 query, _ := bsonic.Parse("email:/.*@example\\.com/")
-// BSON: {"email": {"$regex": ".*@example\\.com"}}
+// BSON: {"email": {"$regex": "^.*@example\\.com$"}}
 
 // Quoted values with spaces
 query, _ := bsonic.Parse(`name:"john doe"`)
@@ -133,34 +133,61 @@ query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
 
-### Default Fields (Recommended)
+### Case Sensitivity
+
+Bsonic handles case sensitivity and multi-word behavior based on the query type:
+
+- **Field queries**:
+  - Case-sensitive
+- **Free text searches**:
+  - Case-insensitive, unless regex or wildcards are used
+  - Multiple unquoted words are ORed together (e.g., `john doe` matches documents where any default field equals "john" OR "doe")
+  - Quoted phrases are treated as single terms (e.g., `"john doe"` matches the exact phrase)
+
+> **Note:** A future feature may add support for case-insensitive regex searches on field queries.
+
+### Default Fields
 
 Bsonic supports default fields for free text queries, allowing you to search across specific fields without using MongoDB's text search operator. This provides more flexibility and doesn't require text indexes.
 
+**Mixed Query Behavior:** When combining field queries with free text (without explicit AND/OR operators), the default behavior is to OR them together. For example, `name:john admin` becomes `name:john OR role:admin`. Use explicit AND/OR operators to override this behavior (e.g., `name:john AND admin`).
+
 ```go
-// Simple default field search
+// Simple default field search (single word)
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john")
-// BSON: {"name": {"$regex": "john", "$options": "i"}}
+// BSON: {"name": {"$regex": "^john$", "$options": "i"}}
+
+// Multiple unquoted words - each word searches default fields with OR
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john doe")
+// BSON: {"$or": [{"name": {"$regex": "^john$", "$options": "i"}}, {"name": {"$regex": "^doe$", "$options": "i"}}]}
+
+// Quoted phrase - treated as single term
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, `"john doe"`)
+// BSON: {"name": {"$regex": "^john doe$", "$options": "i"}}
 
 // Search across multiple default fields
 query, _ := bsonic.ParseWithDefaults([]string{"name", "description"}, "engineer")
-// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^engineer$", "$options": "i"}}, {"description": {"$regex": "^engineer$", "$options": "i"}}]}
 
-// Default fields with wildcards
-query, _ := bsonic.ParseWithDefaults([]string{"name"}, "jo*")
-// BSON: {"name": {"$regex": "^jo.*$", "$options": "i"}}
+// Multiple words with multiple default fields
+query, _ := bsonic.ParseWithDefaults([]string{"name", "title"}, "software engineer")
+// BSON: {"$or": [{"name": {"$regex": "^software$", "$options": "i"}}, {"title": {"$regex": "^software$", "$options": "i"}}, {"name": {"$regex": "^engineer$", "$options": "i"}}, {"title": {"$regex": "^engineer$", "$options": "i"}}]}
 
-// Default fields with regex patterns (case-sensitive)
+// Default fields with wildcards (case-sensitive)
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "Jo*")
+// BSON: {"name": {"$regex": "^Jo.*"}}
+
+// Default fields with regex patterns (case-sensitive, anchors added)
 query, _ := bsonic.ParseWithDefaults([]string{"email"}, "/.*@example\\.com/")
-// BSON: {"email": {"$regex": ".*@example\\.com"}}
+// BSON: {"email": {"$regex": "^.*@example\\.com$"}}
 
-// Mixed free text and field queries
-query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND age:25")
-// BSON: {"age": 25, "name": {"$regex": "john", "$options": "i"}}
+// Mixed free text and field queries (defaults to OR)
+query, _ := bsonic.ParseWithDefaults([]string{"role"}, "name:john admin")
+// BSON: {"$or": [{"name": "john"}, {"role": {"$regex": "^admin$", "$options": "i"}}]}
 
 // With complex field conditions
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND (role:admin OR department:engineering)")
-// BSON: {"$and": [{"$or": [{"role": "admin"}, {"department": "engineering"}]}, {"name": {"$regex": "john", "$options": "i"}}]}
+// BSON: {"$and": [{"$or": [{"role": "admin"}, {"department": "engineering"}]}, {"name": {"$regex": "^john$", "$options": "i"}}]}
 ```
 
 #### Configuration-Based Default Fields
@@ -179,7 +206,7 @@ cfg := config.Default().
 
 parser, _ := bsonic.NewWithConfig(cfg)
 query, _ := parser.Parse("engineer")
-// BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^engineer$", "$options": "i"}}, {"description": {"$regex": "^engineer$", "$options": "i"}}]}
 ```
 
 ### Logical Operators & Grouping
@@ -206,7 +233,7 @@ query, _ := bsonic.Parse("NOT (name:john OR name:jane)")
 
 // Complex combinations with regex
 query, _ := bsonic.Parse("name:/john/ OR email:/.*@example\\.com/ AND NOT status:inactive")
-// BSON: {"$or": [{"name": {"$regex": "john"}}, {"email": {"$regex": ".*@example\\.com"}, "status": {"$ne": "inactive"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^john$"}}, {"email": {"$regex": "^.*@example\\.com$"}, "status": {"$ne": "inactive"}}]}
 ```
 
 ### Date & Number Queries
