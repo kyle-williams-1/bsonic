@@ -772,7 +772,7 @@ func TestDefaultFieldsSearch(t *testing.T) {
 		},
 		{
 			name:     "unquoted single word default fields search",
-			query:    `John`,
+			query:    `*John*`,
 			expected: 2, // Should match John Doe and Bob Johnson
 		},
 		{
@@ -782,22 +782,22 @@ func TestDefaultFieldsSearch(t *testing.T) {
 		},
 		{
 			name:     "unquoted default fields search with field query",
-			query:    `John AND active:true`,
+			query:    `*John* AND active:true`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
 			name:     "unquoted default fields search with OR condition",
-			query:    `John AND (active:true OR role:admin)`,
+			query:    `John* AND (active:true OR role:admin)`,
 			expected: 1, // Should match John Doe who is active
 		},
 		{
 			name:     "multiple unquoted default fields searches with OR",
-			query:    `(John OR Jane) AND active:true`,
+			query:    `(*John* OR *Jane*) AND active:true`,
 			expected: 2, // Should match both John Doe and Jane Smith who are active
 		},
 		{
 			name:     "mixed quoted and unquoted default fields searches",
-			query:    `("John Doe" OR Jane) AND active:true`,
+			query:    `("John Doe" OR *Jane*) AND active:true`,
 			expected: 2, // Should match both John Doe and Jane Smith who are active
 		},
 	}
@@ -890,13 +890,13 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 	}{
 		{
 			name:          "single default field name search",
-			query:         "john",
+			query:         "*john*",
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" and "Bob Johnson"
 		},
 		{
 			name:          "single default field email search",
-			query:         "jane",
+			query:         "*jane*",
 			defaultFields: []string{"email"},
 			expected:      1, // Should match jane.smith@example.com
 		},
@@ -914,13 +914,13 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 		},
 		{
 			name:          "default field with field query",
-			query:         "john AND active:true",
+			query:         "*john* AND active:true",
 			defaultFields: []string{"name"},
 			expected:      1, // Should match "John Doe" who is active
 		},
 		{
 			name:          "default field with OR condition",
-			query:         "john AND (role:admin OR role:user)",
+			query:         "*john* AND (role:admin OR role:user)",
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" (admin) and "Bob Johnson" (user)
 		},

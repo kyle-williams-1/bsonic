@@ -259,6 +259,8 @@ func (f *MongoFormatter) parseRegex(valueStr string) (bson.M, error) {
 	pattern := valueStr[1 : len(valueStr)-1]
 
 	// Return as MongoDB regex query (case-sensitive by default)
+	// Note: For field:value pairs, we don't anchor to allow partial matches
+	// Anchoring is only done for free text searches (see freeTextToBSONUnstructured)
 	return bson.M{"$regex": pattern}, nil
 }
 
@@ -565,8 +567,16 @@ func (f *MongoFormatter) freeTextToBSONUnstructured(ft *lucene.ParticipleFreeTex
 		// Handle unquoted values
 		valueStr = strings.Join(ft.UnquotedValue.TextTerms, " ")
 	} else if ft.RegexValue != nil {
-		// Handle regex values - strip the leading and trailing slashes
-		valueStr = (*ft.RegexValue)[1 : len(*ft.RegexValue)-1]
+		// Handle regex values - strip the leading and trailing slashes and anchor
+		pattern := (*ft.RegexValue)[1 : len(*ft.RegexValue)-1]
+		// Add anchors for exact match if not already present
+		if !strings.HasPrefix(pattern, "^") {
+			pattern = "^" + pattern
+		}
+		if !strings.HasSuffix(pattern, "$") {
+			pattern = pattern + "$"
+		}
+		valueStr = pattern
 		isRegex = true
 	}
 
@@ -713,9 +723,9 @@ func (f *MongoFormatter) parseValueToRegex(valueStr string) (bson.M, error) {
 		return f.parseRegex(valueStr)
 	}
 
-	// For plain text, we need to escape it and make it case-insensitive
+	// For plain text, we need to escape it and make it case-insensitive with exact match
 	escapedValue := f.escapeRegex(valueStr)
-	return bson.M{"$regex": escapedValue, "$options": "i"}, nil
+	return bson.M{"$regex": "^" + escapedValue + "$", "$options": "i"}, nil
 }
 
 // escapeRegex escapes special regex characters in a string

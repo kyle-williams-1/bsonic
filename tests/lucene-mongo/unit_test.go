@@ -107,11 +107,11 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 			t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
 		}
 
-		// Should be parsed as name:John (regex) AND name:"Doe" (default field)
+		// Should be parsed as name:John AND name:Doe (default field with exact match)
 		expected := bson.M{
 			"$and": []bson.M{
 				{"name": "John"},
-				{"name": bson.M{"$regex": "Doe", "$options": "i"}},
+				{"name": bson.M{"$regex": "^Doe$", "$options": "i"}},
 			},
 		}
 
@@ -461,7 +461,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				expected: bson.M{
 					"$or": []bson.M{
 						{"name": bson.M{"$ne": "Bob"}},
-						{"name": bson.M{"$ne": bson.M{"$regex": "Johnson", "$options": "i"}}},
+						{"name": bson.M{"$ne": bson.M{"$regex": "^Johnson$", "$options": "i"}}},
 					},
 				},
 				desc: "NOT operation with multi-word field value should split into NOT (field:value AND default field terms)",
@@ -1586,10 +1586,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			name:  "Simple free text search",
 			query: `"John Doe"`,
 			expected: bson.M{
-				"name": bson.M{
-					"$regex":   "John Doe",
-					"$options": "i",
-				},
+				"name": "John Doe",
 			},
 		},
 		{
@@ -1597,7 +1594,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			query: `'John Doe'`,
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "John Doe",
+					"$regex":   "^John Doe$",
 					"$options": "i",
 				},
 			},
@@ -1608,7 +1605,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			expected: bson.M{
 				"active": true,
 				"name": bson.M{
-					"$regex":   "John Doe",
+					"$regex":   "^John Doe$",
 					"$options": "i",
 				},
 			},
@@ -1626,7 +1623,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1641,7 +1638,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					"$ne": false,
 				},
 				"name": bson.M{
-					"$regex":   "John Doe",
+					"$regex":   "^John Doe$",
 					"$options": "i",
 				},
 			},
@@ -1659,7 +1656,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1684,7 +1681,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1707,7 +1704,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1727,7 +1724,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1743,13 +1740,13 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 						"$or": []bson.M{
 							{
 								"name": bson.M{
-									"$regex":   "John Doe",
+									"$regex":   "^John Doe$",
 									"$options": "i",
 								},
 							},
 							{
 								"name": bson.M{
-									"$regex":   "Jane Smith",
+									"$regex":   "^Jane Smith$",
 									"$options": "i",
 								},
 							},
@@ -1787,7 +1784,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John Doe",
+							"$regex":   "^John Doe$",
 							"$options": "i",
 						},
 					},
@@ -1803,13 +1800,13 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 						"$or": []bson.M{
 							{
 								"name": bson.M{
-									"$regex":   "John Doe",
+									"$regex":   "^John Doe$",
 									"$options": "i",
 								},
 							},
 							{
 								"name": bson.M{
-									"$regex":   "Jane Smith",
+									"$regex":   "^Jane Smith$",
 									"$options": "i",
 								},
 							},
@@ -1829,7 +1826,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			query: `John`,
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "John",
+					"$regex":   "^John$",
 					"$options": "i",
 				},
 			},
@@ -1839,7 +1836,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			query: `John Doe`,
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "John Doe",
+					"$regex":   "^John Doe$",
 					"$options": "i",
 				},
 			},
@@ -1850,7 +1847,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			expected: bson.M{
 				"active": true,
 				"name": bson.M{
-					"$regex":   "John",
+					"$regex":   "^John$",
 					"$options": "i",
 				},
 			},
@@ -1868,7 +1865,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "John",
+							"$regex":   "^John$",
 							"$options": "i",
 						},
 					},
@@ -1884,13 +1881,13 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 						"$or": []bson.M{
 							{
 								"name": bson.M{
-									"$regex":   "John",
+									"$regex":   "^John$",
 									"$options": "i",
 								},
 							},
 							{
 								"name": bson.M{
-									"$regex":   "Jane",
+									"$regex":   "^Jane$",
 									"$options": "i",
 								},
 							},
@@ -1911,13 +1908,13 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 						"$or": []bson.M{
 							{
 								"name": bson.M{
-									"$regex":   "John Doe",
+									"$regex":   "^John Doe$",
 									"$options": "i",
 								},
 							},
 							{
 								"name": bson.M{
-									"$regex":   "Jane",
+									"$regex":   "^Jane$",
 									"$options": "i",
 								},
 							},
@@ -1937,7 +1934,7 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 					"$ne": false,
 				},
 				"name": bson.M{
-					"$regex":   "John",
+					"$regex":   "^John$",
 					"$options": "i",
 				},
 			},
@@ -1972,7 +1969,7 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 			defaultFields: []string{"name"},
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "john",
+					"$regex":   "^john$",
 					"$options": "i",
 				},
 			},
@@ -1985,13 +1982,13 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				"$or": []bson.M{
 					{
 						"name": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
 					{
 						"description": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
@@ -2015,7 +2012,7 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 			defaultFields: []string{"name"},
 			expected: bson.M{
 				"name": bson.M{
-					"$regex": "john.*",
+					"$regex": "^john.*$",
 				},
 			},
 		},
@@ -2026,7 +2023,7 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 			expected: bson.M{
 				"age": 25.0,
 				"name": bson.M{
-					"$regex":   "john",
+					"$regex":   "^john$",
 					"$options": "i",
 				},
 			},
@@ -2037,7 +2034,7 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 			defaultFields: []string{"name"},
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "john doe",
+					"$regex":   "^john doe$",
 					"$options": "i",
 				},
 			},
@@ -2056,7 +2053,7 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 					},
 					{
 						"name": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
@@ -2071,19 +2068,19 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				"$or": []bson.M{
 					{
 						"name": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
 					{
 						"description": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
 					{
 						"title": bson.M{
-							"$regex":   "john",
+							"$regex":   "^john$",
 							"$options": "i",
 						},
 					},
@@ -2119,12 +2116,12 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				"$or": []bson.M{
 					{
 						"name": bson.M{
-							"$regex": "john.*",
+							"$regex": "^john.*$",
 						},
 					},
 					{
 						"description": bson.M{
-							"$regex": "john.*",
+							"$regex": "^john.*$",
 						},
 					},
 				},
@@ -2138,25 +2135,25 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				"$or": []bson.M{
 					{
 						"name": bson.M{
-							"$regex":   "search",
+							"$regex":   "^search$",
 							"$options": "i",
 						},
 					},
 					{
 						"description": bson.M{
-							"$regex":   "search",
+							"$regex":   "^search$",
 							"$options": "i",
 						},
 					},
 					{
 						"title": bson.M{
-							"$regex":   "search",
+							"$regex":   "^search$",
 							"$options": "i",
 						},
 					},
 					{
 						"content": bson.M{
-							"$regex":   "search",
+							"$regex":   "^search$",
 							"$options": "i",
 						},
 					},
@@ -2238,7 +2235,7 @@ func TestLuceneMongoConfigDefaultFields(t *testing.T) {
 			defaultFields: []string{"name"},
 			expected: bson.M{
 				"name": bson.M{
-					"$regex":   "john",
+					"$regex":   "^john$",
 					"$options": "i",
 				},
 			},
