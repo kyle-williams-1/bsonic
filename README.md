@@ -214,7 +214,7 @@ query, _ := bsonic.Parse("(name:john OR name:jane) AND age:25")
 query, _ := bsonic.Parse("NOT (name:john OR name:jane)")
 // BSON: {"$and": [{"name": {"$ne": "john"}}, {"name": {"$ne": "jane"}}]}
 
-// Complex combinations with regex (anchors added)
+// Complex combinations with regex
 query, _ := bsonic.Parse("name:/john/ OR email:/.*@example\\.com/ AND NOT status:inactive")
 // BSON: {"$or": [{"name": {"$regex": "^john$"}}, {"email": {"$regex": "^.*@example\\.com$"}, "status": {"$ne": "inactive"}}]}
 ```

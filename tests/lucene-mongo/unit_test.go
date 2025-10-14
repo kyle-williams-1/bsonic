@@ -107,7 +107,7 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 			t.Fatalf("Parse field value with spaces should not return error, got: %v", err)
 		}
 
-		// Should be parsed as name:John AND name:Doe (default field with exact match)
+		// Should be parsed as name:John AND name:Doe (default field with case insensitive match)
 		expected := bson.M{
 			"$and": []bson.M{
 				{"name": "John"},
