@@ -571,11 +571,6 @@ func (f *MongoFormatter) freeTextToBSONUnstructured(ft *lucene.ParticipleFreeTex
 	} else if ft.UnquotedValue != nil {
 		// Handle unquoted values - each word searches default fields with OR
 		words := ft.UnquotedValue.TextTerms
-		if len(words) == 1 {
-			// Single word - direct search
-			return f.createDefaultFieldSearch(words[0], defaultFields)
-		}
-		// Multiple words - each word searches default fields, all ORed together
 		return f.createMultiWordDefaultFieldSearch(words, defaultFields)
 	} else if ft.RegexValue != nil {
 		// Handle regex values - strip the leading and trailing slashes and anchor
