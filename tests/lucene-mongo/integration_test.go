@@ -131,11 +131,11 @@ func TestBasicQueries(t *testing.T) {
 			query:    "profile.location:\"San Francisco, CA\"",
 			expected: 1,
 		},
-	{
-		name:     "profile bio contains 'engineer' (case-sensitive)",
-		query:    "profile.bio:*engineer*",
-		expected: 1, // John Doe only (lowercase 'engineer'); Charlie has 'Engineer' with capital E
-	},
+		{
+			name:     "profile bio contains 'engineer' (case-sensitive)",
+			query:    "profile.bio:*engineer*",
+			expected: 1, // John Doe only (lowercase 'engineer'); Charlie has 'Engineer' with capital E
+		},
 		{
 			name:     "profile website exists",
 			query:    "profile.website:*",
@@ -567,13 +567,13 @@ func TestRegexPatterns(t *testing.T) {
 		},
 		{
 			name:       "anchored regex pattern - starts with john",
-			query:      "name:/^John/",
+			query:      "name:/^John.*/",
 			expected:   1, // John Doe
 			collection: "users",
 		},
 		{
 			name:       "regex pattern - jane",
-			query:      "name:/Jane/",
+			query:      "name:/.*Jane.*/",
 			expected:   1, // Jane Smith
 			collection: "users",
 		},
@@ -592,65 +592,65 @@ func TestRegexPatterns(t *testing.T) {
 		},
 		{
 			name:       "email regex pattern - john or jane emails",
-			query:      "email:/^(john|jane)\\./",
+			query:      "email:/^(john|jane)\\..*/",
 			expected:   2, // John Doe and Jane Smith
 			collection: "users",
 		},
 		// Tag regex patterns
 		{
 			name:       "tag regex pattern - contains 'dev'",
-			query:      "tags:/dev/",
+			query:      "tags:/.*dev.*/",
 			expected:   2, // John Doe (developer), Charlie Wilson (devops)
 			collection: "users",
 		},
 		{
 			name:       "tag regex pattern - starts with 'g'",
-			query:      "tags:/^g/",
+			query:      "tags:/^g.*/",
 			expected:   1, // John Doe (golang)
 			collection: "users",
 		},
 		// Profile bio regex patterns
 		{
 			name:       "profile bio regex pattern - contains 'engineer'",
-			query:      "profile.bio:/engineer/",
+			query:      "profile.bio:/.*engineer.*/",
 			expected:   1, // John Doe (Senior software engineer) - case sensitive
 			collection: "users",
 		},
 		{
 			name:       "profile bio regex pattern - contains 'designer'",
-			query:      "profile.bio:/Designer/",
+			query:      "profile.bio:/.*Designer.*/",
 			expected:   1, // Jane Smith (UX/UI Designer)
 			collection: "users",
 		},
 		// Website regex patterns
 		{
 			name:       "website regex pattern - https websites",
-			query:      "profile.website:/^https:/",
+			query:      "profile.website:/^https:.*/",
 			expected:   4, // John, Jane, Alice, Charlie (Bob has null website)
 			collection: "users",
 		},
 		{
 			name:       "website regex pattern - .dev domains",
-			query:      "profile.website:/\\.dev$/",
+			query:      "profile.website:/.*\\.dev$/",
 			expected:   1, // John Doe (https://johndoe.dev)
 			collection: "users",
 		},
 		// Product regex patterns
 		{
 			name:       "product name regex pattern - wireless",
-			query:      "name:/Wireless/",
+			query:      "name:/.*Wireless.*/",
 			expected:   1, // Wireless Headphones
 			collection: "products",
 		},
 		{
 			name:       "product category regex pattern - electronics",
-			query:      "category:/electronics/",
+			query:      "category:/^electronics$/",
 			expected:   2, // Wireless Headphones, Gaming Mouse
 			collection: "products",
 		},
 		{
 			name:       "product tag regex pattern - audio related",
-			query:      "tags:/audio/",
+			query:      "tags:/^audio$/",
 			expected:   1, // Wireless Headphones
 			collection: "products",
 		},
@@ -675,26 +675,26 @@ func TestRegexPatterns(t *testing.T) {
 		},
 		{
 			name:       "regex with grouping and OR condition",
-			query:      "(name:/John/ OR name:/Jane/) AND active:true",
+			query:      "(name:/.*John.*/ OR name:/.*Jane.*/) AND active:true",
 			expected:   2, // John Doe and Jane Smith (both active)
 			collection: "users",
 		},
 		// Edge cases and special characters
 		{
 			name:       "regex with escaped characters",
-			query:      "profile.website:/\\.(dev|design|blog|tech)$/",
+			query:      "profile.website:/.*\\.(dev|design|blog|tech)$/",
 			expected:   4, // All users with websites
 			collection: "users",
 		},
 		{
 			name:       "regex with digit matching",
-			query:      "profile.bio:/\\d+/",
+			query:      "profile.bio:/.*\\d+.*/",
 			expected:   0, // No bios contain numbers
 			collection: "users",
 		},
 		{
 			name:       "regex with word boundaries",
-			query:      "tags:/dev/",
+			query:      "tags:/.*dev.*/",
 			expected:   2, // John Doe (developer), Charlie Wilson (devops)
 			collection: "users",
 		},

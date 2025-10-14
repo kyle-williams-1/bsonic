@@ -258,9 +258,15 @@ func (f *MongoFormatter) parseRegex(valueStr string) (bson.M, error) {
 	// Remove the leading and trailing slashes
 	pattern := valueStr[1 : len(valueStr)-1]
 
+	// Add anchors for exact match if not already present
+	if !strings.HasPrefix(pattern, "^") {
+		pattern = "^" + pattern
+	}
+	if !strings.HasSuffix(pattern, "$") {
+		pattern = pattern + "$"
+	}
+
 	// Return as MongoDB regex query (case-sensitive by default)
-	// Note: For field:value pairs, we don't anchor to allow partial matches
-	// Anchoring is only done for free text searches (see freeTextToBSONUnstructured)
 	return bson.M{"$regex": pattern}, nil
 }
 
