@@ -131,11 +131,11 @@ func TestBasicQueries(t *testing.T) {
 			query:    "profile.location:\"San Francisco, CA\"",
 			expected: 1,
 		},
-		{
-			name:     "profile bio contains 'engineer'",
-			query:    "profile.bio:*engineer*",
-			expected: 2, // John Doe and Charlie Wilson
-		},
+	{
+		name:     "profile bio contains 'engineer' (case-sensitive)",
+		query:    "profile.bio:*engineer*",
+		expected: 1, // John Doe only (lowercase 'engineer'); Charlie has 'Engineer' with capital E
+	},
 		{
 			name:     "profile website exists",
 			query:    "profile.website:*",
@@ -771,7 +771,7 @@ func TestDefaultFieldsSearch(t *testing.T) {
 			expected: 1, // Should match John Doe who is not a guest
 		},
 		{
-			name:     "unquoted single word default fields search",
+			name:     "unquoted single word default fields search (case sensitive)",
 			query:    `*John*`,
 			expected: 2, // Should match John Doe and Bob Johnson
 		},
@@ -781,7 +781,7 @@ func TestDefaultFieldsSearch(t *testing.T) {
 			expected: 1, // Should match John Doe
 		},
 		{
-			name:     "unquoted default fields search with field query",
+			name:     "unquoted default fields search with field query (case sensitive)",
 			query:    `*John* AND active:true`,
 			expected: 1, // Should match John Doe who is active
 		},
@@ -890,7 +890,7 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 	}{
 		{
 			name:          "single default field name search",
-			query:         "*john*",
+			query:         "*John*",
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" and "Bob Johnson"
 		},
@@ -898,7 +898,7 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 			name:          "single default field email search",
 			query:         "*jane*",
 			defaultFields: []string{"email"},
-			expected:      1, // Should match jane.smith@example.com
+			expected:      1, // Should match jane.smith@example.com (email is lowercase)
 		},
 		{
 			name:          "multiple default fields search",
@@ -908,19 +908,19 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 		},
 		{
 			name:          "default field with wildcard",
-			query:         "j*",
+			query:         "J*",
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" and "Jane Smith"
 		},
 		{
 			name:          "default field with field query",
-			query:         "*john* AND active:true",
+			query:         "*John* AND active:true",
 			defaultFields: []string{"name"},
 			expected:      1, // Should match "John Doe" who is active
 		},
 		{
 			name:          "default field with OR condition",
-			query:         "*john* AND (role:admin OR role:user)",
+			query:         "*John* AND (role:admin OR role:user)",
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" (admin) and "Bob Johnson" (user)
 		},

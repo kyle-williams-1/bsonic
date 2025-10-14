@@ -112,13 +112,13 @@ bsonic/
 query, _ := bsonic.Parse("name:john")
 // BSON: {"name": "john"}
 
-// Wildcard patterns
-query, _ := bsonic.Parse("name:jo*")
-// BSON: {"name": {"$regex": "^jo.*", "$options": "i"}}
+// Wildcard patterns (case-sensitive)
+query, _ := bsonic.Parse("name:Jo*")
+// BSON: {"name": {"$regex": "^Jo.*"}}
 
-// Regex patterns (case-sensitive by default)
+// Regex patterns (case-sensitive, with anchors added)
 query, _ := bsonic.Parse("email:/.*@example\\.com/")
-// BSON: {"email": {"$regex": ".*@example\\.com"}}
+// BSON: {"email": {"$regex": "^.*@example\\.com$"}}
 
 // Quoted values with spaces
 query, _ := bsonic.Parse(`name:"john doe"`)
@@ -133,6 +133,16 @@ query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
 
+### Case Sensitivity & Search Behavior
+
+Bsonic handles case sensitivity differently based on the query type:
+
+- **Free text searches** (no regex or wildcards): Case-insensitive by default
+- **Wildcard patterns** (`*`, `?`): Case-sensitive
+- **Regex patterns** (between `/` delimiters): Case-sensitive, with start (`^`) and end (`$`) anchors automatically added
+
+> **Note:** A future feature may add support for case-insensitive regex searches on field queries.
+
 ### Default Fields (Recommended)
 
 Bsonic supports default fields for free text queries, allowing you to search across specific fields without using MongoDB's text search operator. This provides more flexibility and doesn't require text indexes.
@@ -146,13 +156,13 @@ query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john")
 query, _ := bsonic.ParseWithDefaults([]string{"name", "description"}, "engineer")
 // BSON: {"$or": [{"name": {"$regex": "engineer", "$options": "i"}}, {"description": {"$regex": "engineer", "$options": "i"}}]}
 
-// Default fields with wildcards
-query, _ := bsonic.ParseWithDefaults([]string{"name"}, "jo*")
-// BSON: {"name": {"$regex": "^jo.*$", "$options": "i"}}
+// Default fields with wildcards (case-sensitive)
+query, _ := bsonic.ParseWithDefaults([]string{"name"}, "Jo*")
+// BSON: {"name": {"$regex": "^Jo.*"}}
 
-// Default fields with regex patterns (case-sensitive)
+// Default fields with regex patterns (case-sensitive, anchors added)
 query, _ := bsonic.ParseWithDefaults([]string{"email"}, "/.*@example\\.com/")
-// BSON: {"email": {"$regex": ".*@example\\.com"}}
+// BSON: {"email": {"$regex": "^.*@example\\.com$"}}
 
 // Mixed free text and field queries
 query, _ := bsonic.ParseWithDefaults([]string{"name"}, "john AND age:25")
@@ -204,9 +214,9 @@ query, _ := bsonic.Parse("(name:john OR name:jane) AND age:25")
 query, _ := bsonic.Parse("NOT (name:john OR name:jane)")
 // BSON: {"$and": [{"name": {"$ne": "john"}}, {"name": {"$ne": "jane"}}]}
 
-// Complex combinations with regex
+// Complex combinations with regex (anchors added)
 query, _ := bsonic.Parse("name:/john/ OR email:/.*@example\\.com/ AND NOT status:inactive")
-// BSON: {"$or": [{"name": {"$regex": "john"}}, {"email": {"$regex": ".*@example\\.com"}, "status": {"$ne": "inactive"}}]}
+// BSON: {"$or": [{"name": {"$regex": "^john$"}}, {"email": {"$regex": "^.*@example\\.com$"}, "status": {"$ne": "inactive"}}]}
 ```
 
 ### Date & Number Queries

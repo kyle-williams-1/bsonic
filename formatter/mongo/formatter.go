@@ -235,7 +235,7 @@ func (f *MongoFormatter) parseWildcard(valueStr string) (bson.M, error) {
 		pattern = "^" + pattern + "$"
 	}
 
-	return bson.M{"$regex": pattern, "$options": "i"}, nil
+	return bson.M{"$regex": pattern}, nil
 }
 
 // isContainsPattern checks if the pattern is a contains pattern (*J*)

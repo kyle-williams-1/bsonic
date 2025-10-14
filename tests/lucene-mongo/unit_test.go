@@ -344,16 +344,16 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 					},
 				},
 			},
-			{
-				input:       "name:jo* OR name:ja* AND NOT age:18",
-				description: "Wildcard OR with AND and NOT",
-				expected: bson.M{
-					"$or": []bson.M{
-						{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-						{"name": bson.M{"$regex": "^ja.*", "$options": "i"}, "age": bson.M{"$ne": 18.0}},
-					},
+		{
+			input:       "name:jo* OR name:ja* AND NOT age:18",
+			description: "Wildcard OR with AND and NOT",
+			expected: bson.M{
+				"$or": []bson.M{
+					{"name": bson.M{"$regex": "^jo.*"}},
+					{"name": bson.M{"$regex": "^ja.*"}, "age": bson.M{"$ne": 18.0}},
 				},
 			},
+		},
 			{
 				input:       "name:/john/ OR email:/.*@example\\.com/ AND NOT status:inactive",
 				description: "Regex OR with AND and NOT",
@@ -405,15 +405,15 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				},
 				desc: "Multiple NOT operations in separate parentheses",
 			},
-			{
-				name:  "NOT with complex field in parentheses",
-				query: "(NOT name:jo*) AND (NOT status:active)",
-				expected: bson.M{
-					"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}},
-					"status": bson.M{"$ne": "active"},
-				},
-				desc: "NOT with wildcard and simple field in parentheses",
+		{
+			name:  "NOT with complex field in parentheses",
+			query: "(NOT name:jo*) AND (NOT status:active)",
+			expected: bson.M{
+				"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*"}},
+				"status": bson.M{"$ne": "active"},
 			},
+			desc: "NOT with wildcard and simple field in parentheses",
+		},
 			{
 				name:  "NOT with quoted value in parentheses",
 				query: "(NOT name:\"john doe\") AND (NOT email:\"test@example.com\")",
@@ -1052,22 +1052,22 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 			},
 			{
 				input: "(name:jo* OR name:ja*) AND (age:25 OR age:30)",
-				expected: bson.M{
-					"$and": []bson.M{
-						{
-							"$or": []bson.M{
-								{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-								{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
-							},
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"name": bson.M{"$regex": "^jo.*"}},
+							{"name": bson.M{"$regex": "^ja.*"}},
 						},
-						{
-							"$or": []bson.M{
-								{"age": 25.0},
-								{"age": 30.0},
-							},
+					},
+					{
+						"$or": []bson.M{
+							{"age": 25.0},
+							{"age": 30.0},
 						},
 					},
 				},
+			},
 				desc: "grouped wildcards and numbers",
 			},
 			{
@@ -1180,22 +1180,22 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 			},
 			{
 				input: "(name:jo* OR name:ja*) AND (age:18 AND age:65)",
-				expected: bson.M{
-					"$and": []bson.M{
-						{
-							"$or": []bson.M{
-								{"name": bson.M{"$regex": "^jo.*", "$options": "i"}},
-								{"name": bson.M{"$regex": "^ja.*", "$options": "i"}},
-							},
+			expected: bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"name": bson.M{"$regex": "^jo.*"}},
+							{"name": bson.M{"$regex": "^ja.*"}},
 						},
-						{
-							"$and": []bson.M{
-								{"age": 65.0},
-								{"age": 18.0},
-							},
+					},
+					{
+						"$and": []bson.M{
+							{"age": 65.0},
+							{"age": 18.0},
 						},
 					},
 				},
+			},
 				desc: "wildcards with numeric values",
 			},
 		}
@@ -1242,16 +1242,16 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 				},
 				desc: "NOT with multiple OR conditions",
 			},
-			{
-				input: "NOT (name:jo* OR name:ja*)",
-				expected: bson.M{
-					"$and": []bson.M{
-						{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*", "$options": "i"}}},
-						{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*", "$options": "i"}}},
-					},
+		{
+			input: "NOT (name:jo* OR name:ja*)",
+			expected: bson.M{
+				"$and": []bson.M{
+					{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*"}}},
+					{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*"}}},
 				},
-				desc: "NOT with wildcard OR conditions",
 			},
+			desc: "NOT with wildcard OR conditions",
+		},
 			{
 				input: "NOT (created_at:>2024-01-01 OR updated_at:<2023-01-01)",
 				expected: bson.M{
@@ -1293,8 +1293,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 				input: "name:*john*",
 				expected: bson.M{
 					"name": bson.M{
-						"$regex":   ".*john.*",
-						"$options": "i",
+						"$regex": ".*john.*",
 					},
 				},
 				desc: "contains pattern",
@@ -1303,8 +1302,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 				input: "name:*john",
 				expected: bson.M{
 					"name": bson.M{
-						"$regex":   ".*john$",
-						"$options": "i",
+						"$regex": ".*john$",
 					},
 				},
 				desc: "ends with pattern",
@@ -1313,8 +1311,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 				input: "name:john*",
 				expected: bson.M{
 					"name": bson.M{
-						"$regex":   "^john.*",
-						"$options": "i",
+						"$regex": "^john.*",
 					},
 				},
 				desc: "starts with pattern",
@@ -1323,8 +1320,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 				input: "name:jo*n",
 				expected: bson.M{
 					"name": bson.M{
-						"$regex":   "^jo.*n$",
-						"$options": "i",
+						"$regex": "^jo.*n$",
 					},
 				},
 				desc: "starts and ends with specific patterns",
@@ -1333,8 +1329,7 @@ func TestLuceneMongoPatternMatching(t *testing.T) {
 				input: "name:*",
 				expected: bson.M{
 					"name": bson.M{
-						"$regex":   ".*",
-						"$options": "i",
+						"$regex": ".*",
 					},
 				},
 				desc: "wildcard only",
@@ -1586,7 +1581,10 @@ func TestLuceneMongoFreeTextSearch(t *testing.T) {
 			name:  "Simple free text search",
 			query: `"John Doe"`,
 			expected: bson.M{
-				"name": "John Doe",
+				"name": bson.M{
+					"$regex":   "^John Doe$",
+					"$options": "i",
+				},
 			},
 		},
 		{
@@ -1995,17 +1993,16 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				},
 			},
 		},
-		{
-			name:          "Free text with wildcard",
-			query:         "john*",
-			defaultFields: []string{"name"},
-			expected: bson.M{
-				"name": bson.M{
-					"$regex":   "^john.*",
-					"$options": "i",
-				},
+	{
+		name:          "Free text with wildcard",
+		query:         "john*",
+		defaultFields: []string{"name"},
+		expected: bson.M{
+			"name": bson.M{
+				"$regex": "^john.*",
 			},
 		},
+	},
 		{
 			name:          "Free text with regex",
 			query:         "/john.*/",
@@ -2087,26 +2084,24 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 				},
 			},
 		},
-		{
-			name:          "Free text wildcard with multiple default fields",
-			query:         "john*",
-			defaultFields: []string{"name", "description"},
-			expected: bson.M{
-				"$or": []bson.M{
-					{
-						"name": bson.M{
-							"$regex":   "^john.*",
-							"$options": "i",
-						},
+	{
+		name:          "Free text wildcard with multiple default fields",
+		query:         "john*",
+		defaultFields: []string{"name", "description"},
+		expected: bson.M{
+			"$or": []bson.M{
+				{
+					"name": bson.M{
+						"$regex": "^john.*",
 					},
-					{
-						"description": bson.M{
-							"$regex":   "^john.*",
-							"$options": "i",
-						},
+				},
+				{
+					"description": bson.M{
+						"$regex": "^john.*",
 					},
 				},
 			},
+		},
 		},
 		{
 			name:          "Free text regex with multiple default fields",
