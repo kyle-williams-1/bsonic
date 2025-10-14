@@ -133,25 +133,24 @@ query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
 ```
 
-### Case Sensitivity & Search Behavior
+### Case Sensitivity
 
 Bsonic handles case sensitivity and multi-word behavior based on the query type:
 
-- **Free text searches** (no regex or wildcards):
-  - Case-insensitive by default
-  - Multiple unquoted words are ORed together (e.g., `john doe` matches documents where any default field contains "john" OR "doe")
+- **Field queries**:
+  - Case-sensitive
+- **Free text searches**:
+  - Case-insensitive, unless regex or wildcards are used
+  - Multiple unquoted words are ORed together (e.g., `john doe` matches documents where any default field equals "john" OR "doe")
   - Quoted phrases are treated as single terms (e.g., `"john doe"` matches the exact phrase)
-- **Mixed queries** (field:value followed by free text without explicit AND/OR):
-  - Default to OR behavior (e.g., `name:john admin` becomes `name:john OR role:admin`)
-  - Use explicit AND/OR operators to override (e.g., `name:john AND admin` for AND behavior)
-- **Wildcard patterns** (`*`, `?`): Case-sensitive
-- **Regex patterns** (between `/` delimiters): Case-sensitive, with start (`^`) and end (`$`) anchors automatically added
 
 > **Note:** A future feature may add support for case-insensitive regex searches on field queries.
 
-### Default Fields (Recommended)
+### Default Fields
 
 Bsonic supports default fields for free text queries, allowing you to search across specific fields without using MongoDB's text search operator. This provides more flexibility and doesn't require text indexes.
+
+**Mixed Query Behavior:** When combining field queries with free text (without explicit AND/OR operators), the default behavior is to OR them together. For example, `name:john admin` becomes `name:john OR role:admin`. Use explicit AND/OR operators to override this behavior (e.g., `name:john AND admin`).
 
 ```go
 // Simple default field search (single word)

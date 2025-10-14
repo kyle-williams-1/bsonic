@@ -2032,6 +2032,27 @@ func TestLuceneMongoDefaultFields(t *testing.T) {
 			},
 		},
 		{
+			name:          "Multiple unquoted words free text with single default field",
+			query:         "john doe",
+			defaultFields: []string{"name"},
+			expected: bson.M{
+				"$or": []bson.M{
+					{
+						"name": bson.M{
+							"$regex":   "^john$",
+							"$options": "i",
+						},
+					},
+					{
+						"name": bson.M{
+							"$regex":   "^doe$",
+							"$options": "i",
+						},
+					},
+				},
+			},
+		},
+		{
 			name:          "Simple free text with multiple default fields",
 			query:         "john",
 			defaultFields: []string{"name", "description"},
