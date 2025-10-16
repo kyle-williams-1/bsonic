@@ -249,6 +249,22 @@ func TestLogicalQueries(t *testing.T) {
 			query:    "((name:\"John Doe\" OR name:\"Charlie Wilson\") AND role:admin) OR (name:\"Alice Brown\" AND role:moderator)",
 			expected: 3, // John, Charlie (admin) + Alice (moderator)
 		},
+		// NOT with wildcards and regex patterns
+		{
+			name:     "NOT with wildcard - exclude names starting with 'J'",
+			query:    "NOT name:J*",
+			expected: 3, // Bob Johnson, Alice Brown, Charlie Wilson (excludes John Doe, Jane Smith)
+		},
+		{
+			name:     "NOT with regex - exclude names matching pattern",
+			query:    "NOT name:/^J.*/",
+			expected: 3, // Bob Johnson, Alice Brown, Charlie Wilson (excludes John Doe, Jane Smith)
+		},
+		{
+			name:     "NOT with comparison operator - exclude age > 30",
+			query:    "NOT age:>30",
+			expected: 3, // John (30), Jane (28), Alice (25) - excludes Bob (35), Charlie (42)
+		},
 	}
 
 	for _, tt := range tests {

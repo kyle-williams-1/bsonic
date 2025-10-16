@@ -409,7 +409,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				name:  "NOT with complex field in parentheses",
 				query: "(NOT name:jo*) AND (NOT status:active)",
 				expected: bson.M{
-					"name":   bson.M{"$ne": bson.M{"$regex": "^jo.*"}},
+					"name":   bson.M{"$not": bson.M{"$regex": "^jo.*"}},
 					"status": bson.M{"$ne": "active"},
 				},
 				desc: "NOT with wildcard and simple field in parentheses",
@@ -441,8 +441,8 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				name:  "NOT with date comparison in parentheses",
 				query: "(NOT created_at:>2024-01-01) AND (NOT updated_at:<2023-01-01)",
 				expected: bson.M{
-					"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
-					"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					"created_at": bson.M{"$not": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					"updated_at": bson.M{"$not": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}},
 				},
 				desc: "NOT with date comparisons in parentheses",
 			},
@@ -461,7 +461,7 @@ func TestLuceneMongoLogicalOperators(t *testing.T) {
 				expected: bson.M{
 					"$and": []bson.M{
 						{"name": bson.M{"$ne": "Bob"}},
-						{"name": bson.M{"$ne": bson.M{"$regex": "^Johnson$", "$options": "i"}}},
+						{"name": bson.M{"$not": bson.M{"$regex": "^Johnson$", "$options": "i"}}},
 					},
 				},
 				desc: "NOT operation with multi-word field value: NOT (A OR B) becomes (NOT A AND NOT B) by De Morgan's law",
@@ -1246,8 +1246,8 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 				input: "NOT (name:jo* OR name:ja*)",
 				expected: bson.M{
 					"$and": []bson.M{
-						{"name": bson.M{"$ne": bson.M{"$regex": "^jo.*"}}},
-						{"name": bson.M{"$ne": bson.M{"$regex": "^ja.*"}}},
+						{"name": bson.M{"$not": bson.M{"$regex": "^jo.*"}}},
+						{"name": bson.M{"$not": bson.M{"$regex": "^ja.*"}}},
 					},
 				},
 				desc: "NOT with wildcard OR conditions",
@@ -1256,8 +1256,8 @@ func TestLuceneMongoParenthesesAndGrouping(t *testing.T) {
 				input: "NOT (created_at:>2024-01-01 OR updated_at:<2023-01-01)",
 				expected: bson.M{
 					"$and": []bson.M{
-						{"created_at": bson.M{"$ne": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
-						{"updated_at": bson.M{"$ne": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+						{"created_at": bson.M{"$not": bson.M{"$gt": time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+						{"updated_at": bson.M{"$not": bson.M{"$lt": time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}}},
 					},
 				},
 				desc: "NOT with date comparison OR conditions",

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.10.0-beta.1]
+
+### Fixed
+
+- **NOT operator with wildcards and regex** - Fixed bug where NOT expressions with wildcards (e.g., `NOT name:jo*`) or regex patterns (e.g., `NOT name:/^john.*/`) were using `$ne` operator instead of `$not`. MongoDB's `$ne` operator cannot wrap query operators like `$regex`, `$gt`, `$lt`, etc. The fix now correctly uses `$not` for query operators and `$ne` for simple values.
+
 ## [v0.9.0-beta.1]
 
 ### Changed
