@@ -600,18 +600,30 @@ func (f *MongoFormatter) negateBSON(condition bson.M) bson.M {
 
 	result := bson.M{}
 	for k, v := range condition {
-		result[k] = bson.M{"$ne": v}
+		// Check if the value is a query operator (bson.M)
+		// If so, use $not instead of $ne (MongoDB requirement)
+		if _, isOperator := v.(bson.M); isOperator {
+			result[k] = bson.M{"$not": v}
+		} else {
+			result[k] = bson.M{"$ne": v}
+		}
 	}
 	return result
 }
 
-// negateConditions negates a list of conditions by adding $ne operators
+// negateConditions negates a list of conditions by adding $ne or $not operators
 func (f *MongoFormatter) negateConditions(conditions []bson.M) []bson.M {
 	var result []bson.M
 	for _, condition := range conditions {
 		negated := bson.M{}
 		for k, v := range condition {
-			negated[k] = bson.M{"$ne": v}
+			// Check if the value is a query operator (bson.M)
+			// If so, use $not instead of $ne (MongoDB requirement)
+			if _, isOperator := v.(bson.M); isOperator {
+				negated[k] = bson.M{"$not": v}
+			} else {
+				negated[k] = bson.M{"$ne": v}
+			}
 		}
 		result = append(result, negated)
 	}
