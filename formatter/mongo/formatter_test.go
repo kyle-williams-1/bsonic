@@ -7,7 +7,7 @@ import (
 	"github.com/kyle-williams-1/bsonic"
 )
 
-// TestLuceneMongoFormatterMethods tests MongoFormatter methods for coverage
+// TestLuceneMongoFormatterMethods tests MongoFormatter methods
 func TestLuceneMongoFormatterMethods(t *testing.T) {
 	formatter := bsonic.NewMongoFormatter()
 
