@@ -1,12 +1,14 @@
 package mongo_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/kyle-williams-1/bsonic"
 	"github.com/kyle-williams-1/bsonic/formatter/mongo"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -212,6 +214,73 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "_id field does not support comparison operators") {
 			t.Fatalf("Expected error about comparison operators, got: %v", err)
+		}
+	})
+
+	t.Run("FormatWithDefaults", func(t *testing.T) {
+		// Test FormatWithDefaults method
+		formatter := bsonic.NewMongoFormatter()
+
+		// Use parser to create a valid AST
+		parser := &lucene.Parser{}
+		astInterface, err := parser.Parse("john")
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		ast := astInterface.(*lucene.ParticipleQuery)
+		result, err := formatter.FormatWithDefaults(ast, []string{"name", "description"})
+		if err != nil {
+			t.Fatalf("FormatWithDefaults should not return error, got: %v", err)
+		}
+
+		// Should create OR query across default fields
+		orArray, ok := result["$or"].([]bson.M)
+		if !ok {
+			t.Fatalf("Expected $or array, got %T", result["$or"])
+		}
+
+		if len(orArray) != 2 {
+			t.Fatalf("Expected 2 default fields, got %d", len(orArray))
+		}
+	})
+
+	t.Run("FormatWithDefaultsNilExpression", func(t *testing.T) {
+		// Test FormatWithDefaults with nil expression
+		formatter := bsonic.NewMongoFormatter()
+
+		ast := &lucene.ParticipleQuery{
+			Expression: nil,
+		}
+
+		result, err := formatter.FormatWithDefaults(ast, []string{"name"})
+		if err != nil {
+			t.Fatalf("FormatWithDefaults should not return error, got: %v", err)
+		}
+
+		expected := bson.M{}
+		if !reflect.DeepEqual(result, expected) {
+			t.Fatalf("Expected %+v, got %+v", expected, result)
+		}
+	})
+
+	t.Run("FormatWithDefaultsInvalidAST", func(t *testing.T) {
+		// Test FormatWithDefaults with invalid AST type
+		formatter := bsonic.NewMongoFormatter()
+
+		result, err := formatter.FormatWithDefaults("invalid", []string{"name"})
+		if err == nil {
+			t.Fatal("FormatWithDefaults should return error for invalid AST type")
+		}
+
+		if !strings.Contains(err.Error(), "expected *lucene.ParticipleQuery AST") {
+			t.Fatalf("Expected error about AST type, got: %v", err)
+		}
+
+		// FormatWithDefaults returns empty bson.M{} on error, not nil
+		expected := bson.M{}
+		if !reflect.DeepEqual(result, expected) {
+			t.Fatalf("Expected empty bson.M{}, got: %+v", result)
 		}
 	})
 }
