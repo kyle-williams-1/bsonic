@@ -10,14 +10,26 @@ import (
 
 	"github.com/kyle-williams-1/bsonic/language/lucene"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MongoFormatter represents a MongoDB BSON formatter for query results.
-type MongoFormatter struct{}
+type MongoFormatter struct {
+	replaceIDWithMongoID    bool
+	autoConvertIDToObjectID bool
+}
 
-// New creates a new MongoDB BSON formatter instance.
+// New creates a new MongoDB BSON formatter instance with default settings.
 func New() *MongoFormatter {
-	return &MongoFormatter{}
+	return NewWithOptions(true, true)
+}
+
+// NewWithOptions creates a new MongoDB BSON formatter instance with specified options.
+func NewWithOptions(replaceIDWithMongoID, autoConvertIDToObjectID bool) *MongoFormatter {
+	return &MongoFormatter{
+		replaceIDWithMongoID:    replaceIDWithMongoID,
+		autoConvertIDToObjectID: autoConvertIDToObjectID,
+	}
 }
 
 // Format converts a parsed query AST into a BSON document.
@@ -32,7 +44,11 @@ func (f *MongoFormatter) Format(ast interface{}) (bson.M, error) {
 	if participleQuery.Expression == nil {
 		return bson.M{}, nil
 	}
-	return f.expressionToBSON(participleQuery.Expression, nil), nil
+	result, err := f.expressionToBSON(participleQuery.Expression, nil)
+	if err != nil {
+		return bson.M{}, err
+	}
+	return result, nil
 }
 
 // Format converts a parsed query AST into a BSON document.
@@ -48,7 +64,77 @@ func (f *MongoFormatter) FormatWithDefaults(ast interface{}, defaultFields []str
 	if participleQuery.Expression == nil {
 		return bson.M{}, nil
 	}
-	return f.expressionToBSON(participleQuery.Expression, defaultFields), nil
+	result, err := f.expressionToBSON(participleQuery.Expression, defaultFields)
+	if err != nil {
+		return bson.M{}, err
+	}
+	return result, nil
+}
+
+// convertFieldName converts field name from "id" to "_id" if enabled.
+// Also converts nested fields like "user.id" to "user._id".
+func (f *MongoFormatter) convertFieldName(field string) string {
+	if !f.replaceIDWithMongoID {
+		return field
+	}
+
+	// Handle standalone "id" field
+	if field == "id" {
+		return "_id"
+	}
+
+	// Handle nested fields ending with ".id"
+	if strings.HasSuffix(field, ".id") {
+		return strings.TrimSuffix(field, ".id") + "._id"
+	}
+
+	return field
+}
+
+// isIDField checks if the field is "_id" (after potential conversion).
+func (f *MongoFormatter) isIDField(field string) bool {
+	return field == "_id" || strings.HasSuffix(field, "._id")
+}
+
+// validateIDFieldValue validates that the value is a plain string suitable for ObjectID conversion.
+// Returns error if the value contains unsupported patterns (regex, wildcard, range, comparison).
+func (f *MongoFormatter) validateIDFieldValue(valueStr string) error {
+	// Check for regex pattern
+	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
+		return errors.New("_id field does not support regex patterns")
+	}
+
+	// Check for wildcard pattern
+	if strings.Contains(valueStr, "*") {
+		return errors.New("_id field does not support wildcard patterns")
+	}
+
+	// Check for range pattern
+	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
+		return errors.New("_id field does not support range queries")
+	}
+
+	// Check for comparison operators
+	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") ||
+		strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
+		return errors.New("_id field does not support comparison operators")
+	}
+
+	return nil
+}
+
+// convertToObjectID converts a string value to primitive.ObjectID.
+func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectID, error) {
+	var hexStr string
+
+	switch v := value.(type) {
+	case string:
+		hexStr = v
+	default:
+		return primitive.NilObjectID, fmt.Errorf("cannot convert %T to ObjectID, expected string", value)
+	}
+
+	return primitive.ObjectIDFromHex(hexStr)
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
@@ -395,9 +481,9 @@ func (f *MongoFormatter) parseNumberRangeWithStart(startStr, endStr string) (int
 }
 
 // expressionToBSON converts a ParticipleExpression to BSON, handling both structured and unstructured queries
-func (f *MongoFormatter) expressionToBSON(expr *lucene.ParticipleExpression, defaultFields []string) bson.M {
+func (f *MongoFormatter) expressionToBSON(expr *lucene.ParticipleExpression, defaultFields []string) (bson.M, error) {
 	if len(expr.Or) == 0 {
-		return bson.M{}
+		return bson.M{}, nil
 	}
 
 	if len(expr.Or) == 1 {
@@ -406,23 +492,30 @@ func (f *MongoFormatter) expressionToBSON(expr *lucene.ParticipleExpression, def
 
 	var conditions []bson.M
 	for _, andExpr := range expr.Or {
-		conditions = append(conditions, f.andExpressionToBSON(andExpr, defaultFields))
+		result, err := f.andExpressionToBSON(andExpr, defaultFields)
+		if err != nil {
+			return bson.M{}, err
+		}
+		conditions = append(conditions, result)
 	}
-	return bson.M{"$or": conditions}
+	return bson.M{"$or": conditions}, nil
 }
 
 // andExpressionToBSON converts AND expressions to BSON, handling both structured and unstructured queries
-func (f *MongoFormatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression, defaultFields []string) bson.M {
+func (f *MongoFormatter) andExpressionToBSON(andExpr *lucene.ParticipleAndExpression, defaultFields []string) (bson.M, error) {
 	if len(andExpr.And) == 0 {
-		return bson.M{}
+		return bson.M{}, nil
 	}
 
 	if len(andExpr.And) == 1 {
 		return f.operandToBSON(andExpr.And[0], defaultFields)
 	}
 
-	directFields, conditions := f.processAndExpressions(andExpr.And, defaultFields)
-	return f.buildAndResult(directFields, conditions)
+	directFields, conditions, err := f.processAndExpressions(andExpr.And, defaultFields)
+	if err != nil {
+		return bson.M{}, err
+	}
+	return f.buildAndResult(directFields, conditions), nil
 }
 
 // canMergeField checks if a field can be merged into directFields
@@ -459,23 +552,26 @@ func (f *MongoFormatter) buildAndResult(directFields bson.M, conditions []bson.M
 }
 
 // operandToBSON converts operands to BSON, handling both structured and unstructured queries
-func (f *MongoFormatter) operandToBSON(operand *lucene.ParticipleOperand, defaultFields []string) bson.M {
+func (f *MongoFormatter) operandToBSON(operand *lucene.ParticipleOperand, defaultFields []string) (bson.M, error) {
 	return f.operandToBSONWithContext(operand, defaultFields, false)
 }
 
 // operandToBSONWithContext converts operands to BSON with negation context
-func (f *MongoFormatter) operandToBSONWithContext(operand *lucene.ParticipleOperand, defaultFields []string, inNotContext bool) bson.M {
+func (f *MongoFormatter) operandToBSONWithContext(operand *lucene.ParticipleOperand, defaultFields []string, inNotContext bool) (bson.M, error) {
 	if operand.Not != nil {
 		// Handle NOT operation
-		childBSON := f.operandToBSONWithContext(operand.Not, defaultFields, true)
-		return f.negateBSON(childBSON)
+		childBSON, err := f.operandToBSONWithContext(operand.Not, defaultFields, true)
+		if err != nil {
+			return bson.M{}, err
+		}
+		return f.negateBSON(childBSON), nil
 	}
 
 	return f.termToBSONWithContext(operand.Term, defaultFields, inNotContext)
 }
 
 // termToBSONWithContext converts terms (field values, free text, groups) to BSON with negation context
-func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, defaultFields []string, inNotContext bool) bson.M {
+func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, defaultFields []string, inNotContext bool) (bson.M, error) {
 	if term.FieldValue != nil {
 		return f.fieldValueToBSONWithContext(term.FieldValue, defaultFields, inNotContext)
 	}
@@ -484,29 +580,32 @@ func (f *MongoFormatter) termToBSONWithContext(term *lucene.ParticipleTerm, defa
 		if defaultFields == nil {
 			// Unstructured queries require default fields - this should not happen in the regular Format method
 			// Return empty BSON since this should not occur in the regular Format method
-			return bson.M{}
+			return bson.M{}, nil
 		}
-		return f.freeTextToBSONUnstructured(term.FreeText, defaultFields)
+		return f.freeTextToBSONUnstructured(term.FreeText, defaultFields), nil
 	}
 
 	if term.Group != nil {
 		return f.expressionToBSON(term.Group.Expression, defaultFields)
 	}
 
-	return bson.M{}
+	return bson.M{}, nil
 }
 
 // fieldValueToBSONWithContext converts field:value pairs to BSON with negation context
-func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, defaultFields []string, inNotContext bool) bson.M {
+func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldValue, defaultFields []string, inNotContext bool) (bson.M, error) {
 	// Check if this field value should be split into field:value + free text
 	if fieldValue, freeText := fv.SplitIntoFieldAndText(); fieldValue != nil {
 		// Convert field value to BSON
-		fieldBSON := f.fieldValueToBSONWithContext(fieldValue, defaultFields, inNotContext)
+		fieldBSON, err := f.fieldValueToBSONWithContext(fieldValue, defaultFields, inNotContext)
+		if err != nil {
+			return bson.M{}, err
+		}
 
 		if defaultFields == nil {
 			// Unstructured queries require default fields - this should not happen in the regular Format method
 			// Return the field BSON only since this should not occur in the regular Format method
-			return fieldBSON
+			return fieldBSON, nil
 		}
 
 		// Convert free text to BSON using default fields
@@ -518,16 +617,43 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 				fieldBSON,
 				freeTextBSON,
 			},
-		}
+		}, nil
 	}
 
 	// Single term or other value type - handle normally
 	valueStr := f.extractValueString(fv.Value)
+
+	// Convert field name if enabled (id -> _id)
+	convertedField := f.convertFieldName(fv.Field)
+
+	// Validate _id field restrictions if this is an _id field
+	if f.isIDField(convertedField) && f.autoConvertIDToObjectID {
+		if err := f.validateIDFieldValue(valueStr); err != nil {
+			return bson.M{}, fmt.Errorf("_id field validation failed: %w", err)
+		}
+	}
+
 	value, err := f.parseValue(valueStr)
 	if err != nil {
 		value = valueStr
 	}
-	return bson.M{fv.Field: value}
+
+	// Convert value to ObjectID if this is an _id field and conversion is enabled
+	if f.isIDField(convertedField) && f.autoConvertIDToObjectID {
+		// Only convert if value is a plain string (not already parsed into a complex type)
+		if strValue, ok := value.(string); ok {
+			objectID, err := f.convertToObjectID(strValue)
+			if err != nil {
+				return bson.M{}, fmt.Errorf("failed to convert _id value to ObjectID: %w", err)
+			}
+			value = objectID
+		} else {
+			// If value was parsed into something else (shouldn't happen after validation), error
+			return bson.M{}, fmt.Errorf("_id field must be a plain string value, got %T", value)
+		}
+	}
+
+	return bson.M{convertedField: value}, nil
 }
 
 // extractValueString extracts the string value from a ParticipleValue
@@ -783,13 +909,16 @@ func (f *MongoFormatter) escapeRegex(s string) string {
 }
 
 // processAndExpressions processes AND expressions, separating simple fields from complex conditions
-func (f *MongoFormatter) processAndExpressions(expressions []*lucene.ParticipleOperand, defaultFields []string) (bson.M, []bson.M) {
+func (f *MongoFormatter) processAndExpressions(expressions []*lucene.ParticipleOperand, defaultFields []string) (bson.M, []bson.M, error) {
 	var conditions []bson.M
 	directFields := bson.M{}
 	hasComplexExpressions := false
 
 	for _, operand := range expressions {
-		childBSON := f.operandToBSON(operand, defaultFields)
+		childBSON, err := f.operandToBSON(operand, defaultFields)
+		if err != nil {
+			return bson.M{}, nil, err
+		}
 
 		if f.isSimpleFieldValue(childBSON) {
 			if f.canMergeField(directFields, childBSON, hasComplexExpressions) {
@@ -803,5 +932,5 @@ func (f *MongoFormatter) processAndExpressions(expressions []*lucene.ParticipleO
 		}
 	}
 
-	return directFields, conditions
+	return directFields, conditions, nil
 }

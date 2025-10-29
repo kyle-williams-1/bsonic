@@ -19,17 +19,21 @@ const (
 
 // Config represents the configuration for a parser.
 type Config struct {
-	Language      LanguageType
-	Formatter     FormatterType
-	DefaultFields []string
+	Language                LanguageType
+	Formatter               FormatterType
+	DefaultFields           []string
+	ReplaceIDWithMongoID    bool
+	AutoConvertIDToObjectID bool
 }
 
 // Default returns the default configuration with Lucene language and MongoDB formatter.
 func Default() *Config {
 	return &Config{
-		Language:      LanguageLucene,
-		Formatter:     FormatterMongo,
-		DefaultFields: []string{},
+		Language:                LanguageLucene,
+		Formatter:               FormatterMongo,
+		DefaultFields:           []string{},
+		ReplaceIDWithMongoID:    true,
+		AutoConvertIDToObjectID: true,
 	}
 }
 
@@ -48,5 +52,17 @@ func (c *Config) WithFormatter(formatter FormatterType) *Config {
 // WithDefaultFields sets the default fields for unstructured queries and returns the config.
 func (c *Config) WithDefaultFields(fields []string) *Config {
 	c.DefaultFields = fields
+	return c
+}
+
+// WithReplaceIDWithMongoID sets whether to replace "id" field names with "_id" and returns the config.
+func (c *Config) WithReplaceIDWithMongoID(enabled bool) *Config {
+	c.ReplaceIDWithMongoID = enabled
+	return c
+}
+
+// WithAutoConvertIDToObjectID sets whether to automatically convert string values to primitive.ObjectID for "_id" fields and returns the config.
+func (c *Config) WithAutoConvertIDToObjectID(enabled bool) *Config {
+	c.AutoConvertIDToObjectID = enabled
 	return c
 }

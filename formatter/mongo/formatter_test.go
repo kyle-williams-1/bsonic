@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/kyle-williams-1/bsonic"
+	"github.com/kyle-williams-1/bsonic/formatter/mongo"
+	"github.com/kyle-williams-1/bsonic/language/lucene"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // TestLuceneMongoFormatterMethods tests MongoFormatter methods
@@ -32,6 +35,183 @@ func TestLuceneMongoFormatterMethods(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "expected *lucene.ParticipleQuery AST") {
 			t.Fatalf("Expected error about AST type, got: %v", err)
+		}
+	})
+}
+
+// TestIDFieldConversion tests ID field name conversion and ObjectID conversion
+func TestIDFieldConversion(t *testing.T) {
+	// Create a parser to parse queries
+	parser := lucene.New()
+
+	t.Run("IDFieldNameConversionEnabled", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:507f1f77bcf86cd799439011`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that field name was converted from "id" to "_id"
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+
+		// Check that value is ObjectID
+		objectID, ok := result["_id"].(primitive.ObjectID)
+		if !ok {
+			t.Fatalf("Expected ObjectID, got %T: %+v", result["_id"], result["_id"])
+		}
+
+		// Verify it's the correct ObjectID
+		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		if objectID != expectedObjectID {
+			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
+		}
+	})
+
+	t.Run("IDFieldNameConversionDisabled", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(false, false)
+
+		query := `id:507f1f77bcf86cd799439011`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that field name was NOT converted
+		if _, exists := result["id"]; !exists {
+			t.Fatalf("Expected 'id' field, got: %+v", result)
+		}
+
+		// Value should remain as string when conversion is disabled
+		strValue, ok := result["id"].(string)
+		if !ok {
+			t.Fatalf("Expected string, got %T: %+v", result["id"], result["id"])
+		}
+		if strValue != "507f1f77bcf86cd799439011" {
+			t.Fatalf("Expected string value '507f1f77bcf86cd799439011', got '%s'", strValue)
+		}
+	})
+
+	t.Run("NestedIDFieldConversion", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, false) // Enable field conversion, disable ObjectID conversion
+
+		query := `user.id:507f1f77bcf86cd799439011`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that nested field name was converted from "user.id" to "user._id"
+		if _, exists := result["user._id"]; !exists {
+			t.Fatalf("Expected 'user._id' field, got: %+v", result)
+		}
+	})
+
+	t.Run("InvalidObjectIDError", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:invalid-hex-string`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		_, err = formatter.Format(ast)
+		if err == nil {
+			t.Fatal("Format should return error for invalid ObjectID hex string")
+		}
+		if !strings.Contains(err.Error(), "failed to convert _id value to ObjectID") {
+			t.Fatalf("Expected error about ObjectID conversion, got: %v", err)
+		}
+	})
+
+	t.Run("IDFieldWithRegexError", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:/pattern/`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		_, err = formatter.Format(ast)
+		if err == nil {
+			t.Fatal("Format should return error for regex pattern on _id field")
+		}
+		if !strings.Contains(err.Error(), "_id field does not support regex patterns") {
+			t.Fatalf("Expected error about regex patterns, got: %v", err)
+		}
+	})
+
+	t.Run("IDFieldWithWildcardError", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:*pattern*`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		_, err = formatter.Format(ast)
+		if err == nil {
+			t.Fatal("Format should return error for wildcard pattern on _id field")
+		}
+		if !strings.Contains(err.Error(), "_id field does not support wildcard patterns") {
+			t.Fatalf("Expected error about wildcard patterns, got: %v", err)
+		}
+	})
+
+	t.Run("IDFieldWithRangeError", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		_, err = formatter.Format(ast)
+		if err == nil {
+			t.Fatal("Format should return error for range query on _id field")
+		}
+		if !strings.Contains(err.Error(), "_id field does not support range queries") {
+			t.Fatalf("Expected error about range queries, got: %v", err)
+		}
+	})
+
+	t.Run("IDFieldWithComparisonError", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `id:>507f1f77bcf86cd799439011`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		_, err = formatter.Format(ast)
+		if err == nil {
+			t.Fatal("Format should return error for comparison operator on _id field")
+		}
+		if !strings.Contains(err.Error(), "_id field does not support comparison operators") {
+			t.Fatalf("Expected error about comparison operators, got: %v", err)
 		}
 	})
 }
