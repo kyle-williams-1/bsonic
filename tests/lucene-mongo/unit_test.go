@@ -8,6 +8,7 @@ import (
 	"github.com/kyle-williams-1/bsonic"
 	bsonic_config "github.com/kyle-williams-1/bsonic/config"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // createParserWithDefaults creates a parser with default fields for testing
@@ -97,6 +98,57 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 					t.Fatalf("Expected %+v, got %+v", test.expected, result)
 				}
 			})
+		}
+	})
+
+	// Test ID field conversion
+	t.Run("IDFieldConversion", func(t *testing.T) {
+		// Test with default config (both options enabled)
+		query, err := parser.Parse("id:507f1f77bcf86cd799439011")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was converted from "id" to "_id"
+		if _, exists := query["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", query)
+		}
+
+		// Check that value is ObjectID
+		objectID, ok := query["_id"].(primitive.ObjectID)
+		if !ok {
+			t.Fatalf("Expected ObjectID, got %T: %+v", query["_id"], query["_id"])
+		}
+
+		// Verify it's the correct ObjectID
+		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		if objectID != expectedObjectID {
+			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
+		}
+	})
+
+	// Test nested ID field conversion
+	t.Run("NestedIDFieldConversion", func(t *testing.T) {
+		query, err := parser.Parse("user.id:507f1f77bcf86cd799439011")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that nested field name was converted from "user.id" to "user._id"
+		if _, exists := query["user._id"]; !exists {
+			t.Fatalf("Expected 'user._id' field, got: %+v", query)
+		}
+
+		// Check that value is ObjectID
+		objectID, ok := query["user._id"].(primitive.ObjectID)
+		if !ok {
+			t.Fatalf("Expected ObjectID, got %T: %+v", query["user._id"], query["user._id"])
+		}
+
+		// Verify it's the correct ObjectID
+		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		if objectID != expectedObjectID {
+			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}
 	})
 
@@ -2351,4 +2403,39 @@ func TestLuceneMongoConfigDefaultFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestIDFieldConversionConfig tests ID field conversion with custom configuration
+func TestIDFieldConversionConfig(t *testing.T) {
+	t.Run("IDFieldConversionWithCustomConfig", func(t *testing.T) {
+		// Test with custom config (both options disabled)
+		cfg := bsonic_config.Default().
+			WithDefaultFields([]string{"name"}).
+			WithReplaceIDWithMongoID(false).
+			WithAutoConvertIDToObjectID(false)
+
+		parser, err := bsonic.NewWithConfig(cfg)
+		if err != nil {
+			t.Fatalf("NewWithConfig should not return error, got: %v", err)
+		}
+
+		query, err := parser.Parse("id:507f1f77bcf86cd799439011")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was NOT converted
+		if _, exists := query["id"]; !exists {
+			t.Fatalf("Expected 'id' field, got: %+v", query)
+		}
+
+		// Value should remain as string when conversion is disabled
+		strValue, ok := query["id"].(string)
+		if !ok {
+			t.Fatalf("Expected string, got %T: %+v", query["id"], query["id"])
+		}
+		if strValue != "507f1f77bcf86cd799439011" {
+			t.Fatalf("Expected string value '507f1f77bcf86cd799439011', got '%s'", strValue)
+		}
+	})
 }

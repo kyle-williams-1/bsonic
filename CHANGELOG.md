@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.0]
+
+### Added
+
+- **ID field conversion** - Automatic conversion of `id` field names to `_id` for MongoDB compatibility
+- **ObjectID support** - Automatic conversion of string values to `primitive.ObjectID` for `_id` fields
+- **Nested ID field conversion** - Support for nested ID fields (e.g., `user.id` → `user._id`)
+- **ID field validation** - Strict validation for `_id` fields with clear error messages
+- **Configuration options** for ID field handling:
+  - `WithReplaceIDWithMongoID(bool)` - Enable/disable `id` to `_id` conversion (default: `true`)
+  - `WithAutoConvertIDToObjectID(bool)` - Enable/disable ObjectID conversion (default: `true`)
+
+### Features Implemented
+
+- `id:507f1f77bcf86cd799439011` - Converts to `{"_id": ObjectID("507f1f77bcf86cd799439011")}`
+- `user.id:507f1f77bcf86cd799439011` - Converts to `{"user._id": ObjectID("507f1f77bcf86cd799439011")}`
+- `id:invalid-hex` - Returns validation error for invalid ObjectID hex strings
+- `id:/pattern/` - Returns error for unsupported regex patterns on `_id` fields
+- `id:*pattern*` - Returns error for unsupported wildcard patterns on `_id` fields
+- `id:[start TO end]` - Returns error for unsupported range queries on `_id` fields
+- `id:>value` - Returns error for unsupported comparison operators on `_id` fields
+
+### Technical Improvements
+
+- Enhanced `MongoFormatter` with ID field conversion logic
+- Added `convertFieldName()` method for field name transformation
+- Added `isIDField()` method for ID field detection
+- Added `validateIDFieldValue()` method for strict validation
+- Added `convertToObjectID()` method for ObjectID conversion
+- Updated error handling to propagate validation errors through the parsing pipeline
+- Added comprehensive test coverage for all ID field conversion scenarios
+
+### Documentation
+
+- Updated README.md with ID field conversion examples and configuration
+- Added new "ID Field Conversion" section with usage examples
+- Documented configuration options and restrictions
+- Updated feature list to include ID field conversion
+
+### Testing
+
+- Added unit tests for ID field conversion in `formatter/mongo/formatter_test.go`
+- Added integration tests in `tests/lucene-mongo/unit_test.go`
+- Added MongoDB integration tests in `tests/lucene-mongo/integration_test.go`
+- All tests consolidated into existing test functions for better organization
+- Comprehensive error case testing for invalid ObjectID and unsupported patterns
+
 ## [v0.10.0-beta.1]
 
 ### Fixed

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,17 @@ func TestBasicQueries(t *testing.T) {
 			name:     "profile website exists",
 			query:    "profile.website:*",
 			expected: 4, // All except Bob Johnson
+		},
+		// ID field conversion tests
+		{
+			name:     "id field conversion to _id with ObjectID",
+			query:    "id:507f1f77bcf86cd799439011",
+			expected: 0, // No user with this specific ObjectID
+		},
+		{
+			name:     "nested id field conversion to _id with ObjectID",
+			query:    "user.id:507f1f77bcf86cd799439011",
+			expected: 0, // No user with this specific ObjectID
 		},
 	}
 
@@ -896,6 +908,33 @@ func TestUtilityAndEdgeCases(t *testing.T) {
 			})
 		}
 	})
+
+	// Test ID field restrictions
+	t.Run("IDFieldRestrictions", func(t *testing.T) {
+		tests := []struct {
+			query       string
+			desc        string
+			errorSubstr string
+		}{
+			{"id:invalid-hex-string", "invalid ObjectID hex string", "failed to convert _id value to ObjectID"},
+			{"id:/pattern/", "regex pattern on _id field", "_id field does not support regex patterns"},
+			{"id:*pattern*", "wildcard pattern on _id field", "_id field does not support wildcard patterns"},
+			{"id:[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]", "range query on _id field", "_id field does not support range queries"},
+			{"id:>507f1f77bcf86cd799439011", "comparison operator on _id field", "_id field does not support comparison operators"},
+		}
+
+		for _, test := range tests {
+			t.Run(test.desc, func(t *testing.T) {
+				_, err := parser.Parse(test.query)
+				if err == nil {
+					t.Fatalf("Expected error for '%s', got none", test.query)
+				}
+				if !strings.Contains(err.Error(), test.errorSubstr) {
+					t.Fatalf("Expected error containing '%s', got: %v", test.errorSubstr, err)
+				}
+			})
+		}
+	})
 }
 
 // TestDefaultFieldsIntegration tests default fields functionality with actual MongoDB queries
@@ -945,14 +984,56 @@ func TestDefaultFieldsIntegration(t *testing.T) {
 			defaultFields: []string{"name"},
 			expected:      2, // Should match "John Doe" (admin) and "Bob Johnson" (user)
 		},
+		// ID field conversion with custom config
+		{
+			name:          "id field without conversion (disabled)",
+			query:         "id:507f1f77bcf86cd799439011",
+			defaultFields: []string{"name"},
+			expected:      0, // No user with this specific string ID
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Parse the query with default fields
-			filter, err := bsonic.ParseWithDefaults(tt.defaultFields, tt.query)
-			if err != nil {
-				t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+			var filter bson.M
+			var err error
+
+			// Special handling for ID field conversion with custom config
+			if tt.name == "id field without conversion (disabled)" {
+				cfg := bsonic_config.Default().
+					WithDefaultFields(tt.defaultFields).
+					WithReplaceIDWithMongoID(false).
+					WithAutoConvertIDToObjectID(false)
+
+				parser, err := bsonic.NewWithConfig(cfg)
+				if err != nil {
+					t.Fatalf("NewWithConfig should not return error, got: %v", err)
+				}
+
+				filter, err = parser.Parse(tt.query)
+				if err != nil {
+					t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+				}
+
+				// Check that field name was NOT converted
+				if _, exists := filter["id"]; !exists {
+					t.Fatalf("Expected 'id' field, got: %+v", filter)
+				}
+
+				// Value should remain as string when conversion is disabled
+				strValue, ok := filter["id"].(string)
+				if !ok {
+					t.Fatalf("Expected string, got %T: %+v", filter["id"], filter["id"])
+				}
+				if strValue != "507f1f77bcf86cd799439011" {
+					t.Fatalf("Expected string value '507f1f77bcf86cd799439011', got '%s'", strValue)
+				}
+			} else {
+				// Parse the query with default fields
+				filter, err = bsonic.ParseWithDefaults(tt.defaultFields, tt.query)
+				if err != nil {
+					t.Fatalf("Failed to parse query '%s': %v", tt.query, err)
+				}
 			}
 
 			// Execute the query

@@ -43,6 +43,16 @@ func NewFormatter(formatterType config.FormatterType) (formatter.Formatter[bson.
 	}
 }
 
+// NewFormatterWithConfig creates a formatter based on the formatter type with config options.
+func NewFormatterWithConfig(formatterType config.FormatterType, cfg *config.Config) (formatter.Formatter[bson.M], error) {
+	switch formatterType {
+	case config.FormatterMongo:
+		return mongo.NewWithOptions(cfg.ReplaceIDWithMongoID, cfg.AutoConvertIDToObjectID), nil
+	default:
+		return nil, fmt.Errorf("unsupported formatter type: %s", formatterType)
+	}
+}
+
 // NewMongoFormatter creates a MongoDB BSON formatter with proper typing.
 func NewMongoFormatter() formatter.Formatter[bson.M] {
 	return mongo.New()
@@ -68,7 +78,7 @@ func NewWithConfig(cfg *config.Config) (*Parser, error) {
 		return nil, err
 	}
 
-	formatter, err := NewFormatter(cfg.Formatter)
+	formatter, err := NewFormatterWithConfig(cfg.Formatter, cfg)
 	if err != nil {
 		return nil, err
 	}
