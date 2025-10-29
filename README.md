@@ -28,6 +28,7 @@ A Go library that provides Lucene-style syntax for MongoDB BSON filters. Convert
 - **Nested data**: Dot notation for nested fields and array search
 - **Logical operators**: AND, OR, NOT with parentheses grouping
 - **Date & number queries**: Range queries and comparisons with type-aware parsing
+- **ID field conversion**: Automatic `id` to `_id` field conversion with ObjectID support
 - **MongoDB compatible**: Generates BSON for the official MongoDB Go driver
 - **Extensible**: Easy to add new query languages and output formatters
 
@@ -88,7 +89,9 @@ parser := bsonic.New()
 // Custom configuration
 cfg := config.Default().
     WithLanguage(config.LanguageLucene).
-    WithFormatter(config.FormatterMongo)
+    WithFormatter(config.FormatterMongo).
+    WithReplaceIDWithMongoID(true).      // Enable id -> _id conversion (default: true)
+    WithAutoConvertIDToObjectID(true)    // Enable ObjectID conversion (default: true)
 parser, _ := bsonic.NewWithConfig(cfg)
 ```
 
@@ -132,6 +135,14 @@ query, _ := bsonic.Parse("user.profile.email:john@example.com")
 // Array fields
 query, _ := bsonic.Parse("tags:mongodb")
 // BSON: {"tags": "mongodb"}
+
+// ID field conversion (enabled by default)
+query, _ := bsonic.Parse("id:507f1f77bcf86cd799439011")
+// BSON: {"_id": ObjectID("507f1f77bcf86cd799439011")}
+
+// Nested ID field conversion
+query, _ := bsonic.Parse("user.id:507f1f77bcf86cd799439011")
+// BSON: {"user._id": ObjectID("507f1f77bcf86cd799439011")}
 ```
 
 ### Case Sensitivity
@@ -260,6 +271,39 @@ query, _ := bsonic.Parse("active:true AND age:25 AND created_at:2023-01-15")
 ```
 
 **Supported Date Formats:** `2023-01-15`, `2023-01-15T10:30:00Z`, `01/15/2023`, etc.
+
+### ID Field Conversion
+
+Bsonic automatically handles MongoDB's `_id` field conventions with configurable options:
+
+```go
+// ID field conversion (enabled by default)
+query, _ := bsonic.Parse("id:507f1f77bcf86cd799439011")
+// BSON: {"_id": ObjectID("507f1f77bcf86cd799439011")}
+
+// Nested ID field conversion
+query, _ := bsonic.Parse("user.id:507f1f77bcf86cd799439011")
+// BSON: {"user._id": ObjectID("507f1f77bcf86cd799439011")}
+
+// Disable ID field conversion
+cfg := config.Default().
+    WithReplaceIDWithMongoID(false).     // Keep "id" as "id"
+    WithAutoConvertIDToObjectID(false)   // Keep as string
+parser, _ := bsonic.NewWithConfig(cfg)
+query, _ := parser.Parse("id:507f1f77bcf86cd799439011")
+// BSON: {"id": "507f1f77bcf86cd799439011"}
+```
+
+**ID Field Restrictions:** When ID field conversion is enabled, `_id` fields only support:
+
+- Valid ObjectID hex strings (24 characters)
+- No regex patterns, wildcards, ranges, or comparison operators
+- Strict validation with clear error messages
+
+**Configuration Options:**
+
+- `WithReplaceIDWithMongoID(bool)`: Convert `id` field names to `_id` (default: `true`)
+- `WithAutoConvertIDToObjectID(bool)`: Convert string values to `primitive.ObjectID` (default: `true`)
 
 ### Error Handling & Performance
 
