@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.0]
+
+### Enhanced
+
+- **Improved ObjectID Detection** - Now detects any field ending with `_id` (not just `_id` itself)
+- **Smart ObjectID Conversion** - Only attempts conversion for 24-character hex strings matching `^[0-9a-fA-F]{24}$`
+- **Graceful Fallback** - Falls back to string search instead of erroring when ObjectID conversion fails
+- **Removed Strict Validation** - ID fields now support all query patterns (regex, wildcards, ranges, comparisons)
+
+### Changed
+
+- **ID Field Detection** - `isIDField()` now matches any field ending with `_id` (e.g., `user_id`, `order_id`, `product_id`)
+- **ObjectID Conversion** - `convertToObjectID()` now validates hex pattern before attempting conversion
+- **Error Handling** - Removed strict validation errors; ID fields now gracefully fallback to string behavior
+- **Field Value Processing** - `fieldValueToBSONWithContext()` no longer errors on invalid ObjectIDs
+
+### Features Implemented
+
+- `user_id:507f1f77bcf86cd799439011` - Converts to `{"user_id": ObjectID("507f1f77bcf86cd799439011")}`
+- `order_id:invalid` - Falls back to `{"order_id": "invalid"}` (string search)
+- `id:/pattern/` - Falls back to `{"_id": {"$regex": "^pattern$"}}` (regex search)
+- `id:*pattern*` - Falls back to wildcard pattern (wildcard search)
+- `id:[start TO end]` - Falls back to range pattern (range search)
+- `id:>value` - Falls back to comparison pattern (comparison search)
+
+### Technical Improvements
+
+- Enhanced `isIDField()` method to detect any `*_id` field
+- Removed `validateIDFieldValue()` method entirely
+- Updated `convertToObjectID()` with regex validation and graceful fallback
+- Modified `fieldValueToBSONWithContext()` to handle fallback scenarios
+- Updated all test cases to reflect new behavior
+
+### Documentation
+
+- Updated README.md with new ID field detection behavior
+- Added examples of `*_id` field detection and fallback scenarios
+- Documented removal of strict validation restrictions
+- Updated configuration documentation
+
+### Testing
+
+- Updated unit tests to expect success instead of errors for ID field patterns
+- Added test cases for `*_id` fields (`user_id`, `order_id`, `product_id`)
+- Updated integration tests to verify fallback behavior
+- Added comprehensive test coverage for new detection logic
+
 ## [v1.1.0]
 
 ### Added

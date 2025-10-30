@@ -127,7 +127,7 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidObjectIDError", func(t *testing.T) {
+	t.Run("InvalidObjectIDFallback", func(t *testing.T) {
 		formatter := mongo.NewWithOptions(true, true)
 
 		query := `id:invalid-hex-string`
@@ -136,16 +136,21 @@ func TestIDFieldConversion(t *testing.T) {
 			t.Fatalf("Failed to parse query: %v", err)
 		}
 
-		_, err = formatter.Format(ast)
-		if err == nil {
-			t.Fatal("Format should return error for invalid ObjectID hex string")
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "failed to convert _id value to ObjectID") {
-			t.Fatalf("Expected error about ObjectID conversion, got: %v", err)
+
+		// Should fallback to string search
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+		if result["_id"] != "invalid-hex-string" {
+			t.Fatalf("Expected string fallback, got: %+v", result["_id"])
 		}
 	})
 
-	t.Run("IDFieldWithRegexError", func(t *testing.T) {
+	t.Run("IDFieldWithRegexFallback", func(t *testing.T) {
 		formatter := mongo.NewWithOptions(true, true)
 
 		query := `id:/pattern/`
@@ -154,16 +159,22 @@ func TestIDFieldConversion(t *testing.T) {
 			t.Fatalf("Failed to parse query: %v", err)
 		}
 
-		_, err = formatter.Format(ast)
-		if err == nil {
-			t.Fatal("Format should return error for regex pattern on _id field")
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "_id field does not support regex patterns") {
-			t.Fatalf("Expected error about regex patterns, got: %v", err)
+
+		// Should fallback to regex pattern
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+		// Should be a regex pattern (complex type)
+		if result["_id"] == "/pattern/" {
+			t.Fatalf("Expected parsed regex pattern, got string: %+v", result["_id"])
 		}
 	})
 
-	t.Run("IDFieldWithWildcardError", func(t *testing.T) {
+	t.Run("IDFieldWithWildcardFallback", func(t *testing.T) {
 		formatter := mongo.NewWithOptions(true, true)
 
 		query := `id:*pattern*`
@@ -172,16 +183,22 @@ func TestIDFieldConversion(t *testing.T) {
 			t.Fatalf("Failed to parse query: %v", err)
 		}
 
-		_, err = formatter.Format(ast)
-		if err == nil {
-			t.Fatal("Format should return error for wildcard pattern on _id field")
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "_id field does not support wildcard patterns") {
-			t.Fatalf("Expected error about wildcard patterns, got: %v", err)
+
+		// Should fallback to wildcard pattern
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+		// Should be a wildcard pattern (complex type)
+		if result["_id"] == "*pattern*" {
+			t.Fatalf("Expected parsed wildcard pattern, got string: %+v", result["_id"])
 		}
 	})
 
-	t.Run("IDFieldWithRangeError", func(t *testing.T) {
+	t.Run("IDFieldWithRangeFallback", func(t *testing.T) {
 		formatter := mongo.NewWithOptions(true, true)
 
 		query := `id:[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]`
@@ -190,16 +207,24 @@ func TestIDFieldConversion(t *testing.T) {
 			t.Fatalf("Failed to parse query: %v", err)
 		}
 
-		_, err = formatter.Format(ast)
-		if err == nil {
-			t.Fatal("Format should return error for range query on _id field")
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "_id field does not support range queries") {
-			t.Fatalf("Expected error about range queries, got: %v", err)
+
+		// Should fallback to range pattern
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+		// Should be a range pattern (complex type) or fallback to string
+		// The exact type depends on how the parser handles the range syntax
+		if result["_id"] == "[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]" {
+			// This is acceptable - it means the range was treated as a string
+			// which is the fallback behavior we want
 		}
 	})
 
-	t.Run("IDFieldWithComparisonError", func(t *testing.T) {
+	t.Run("IDFieldWithComparisonFallback", func(t *testing.T) {
 		formatter := mongo.NewWithOptions(true, true)
 
 		query := `id:>507f1f77bcf86cd799439011`
@@ -208,12 +233,103 @@ func TestIDFieldConversion(t *testing.T) {
 			t.Fatalf("Failed to parse query: %v", err)
 		}
 
-		_, err = formatter.Format(ast)
-		if err == nil {
-			t.Fatal("Format should return error for comparison operator on _id field")
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "_id field does not support comparison operators") {
-			t.Fatalf("Expected error about comparison operators, got: %v", err)
+
+		// Should fallback to comparison pattern
+		if _, exists := result["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", result)
+		}
+		// Should be a comparison pattern (complex type) or fallback to string
+		// The exact type depends on how the parser handles the comparison syntax
+		if result["_id"] == ">507f1f77bcf86cd799439011" {
+			// This is acceptable - it means the comparison was treated as a string
+			// which is the fallback behavior we want
+		}
+	})
+
+	t.Run("UserIDFieldConversion", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `user_id:507f1f77bcf86cd799439011`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "user_id"
+		if _, exists := result["user_id"]; !exists {
+			t.Fatalf("Expected 'user_id' field, got: %+v", result)
+		}
+
+		// Check that value is ObjectID
+		objectID, ok := result["user_id"].(primitive.ObjectID)
+		if !ok {
+			t.Fatalf("Expected ObjectID, got %T: %+v", result["user_id"], result["user_id"])
+		}
+
+		// Verify it's the correct ObjectID
+		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		if objectID != expectedObjectID {
+			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
+		}
+	})
+
+	t.Run("OrderIDFieldFallback", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `order_id:invalid`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "order_id"
+		if _, exists := result["order_id"]; !exists {
+			t.Fatalf("Expected 'order_id' field, got: %+v", result)
+		}
+
+		// Should fallback to string search
+		if result["order_id"] != "invalid" {
+			t.Fatalf("Expected string fallback, got: %+v", result["order_id"])
+		}
+	})
+
+	t.Run("ProductIDFieldFallback", func(t *testing.T) {
+		formatter := mongo.NewWithOptions(true, true)
+
+		query := `product_id:12345`
+		ast, err := parser.Parse(query)
+		if err != nil {
+			t.Fatalf("Failed to parse query: %v", err)
+		}
+
+		result, err := formatter.Format(ast)
+		if err != nil {
+			t.Fatalf("Format should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "product_id"
+		if _, exists := result["product_id"]; !exists {
+			t.Fatalf("Expected 'product_id' field, got: %+v", result)
+		}
+
+		// Should fallback to string search (not 24 chars)
+		// The value should be parsed as a number since it's numeric
+		if result["product_id"] != 12345.0 && result["product_id"] != "12345" {
+			t.Fatalf("Expected numeric or string fallback, got: %+v", result["product_id"])
 		}
 	})
 

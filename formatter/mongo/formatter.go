@@ -91,39 +91,14 @@ func (f *MongoFormatter) convertFieldName(field string) string {
 	return field
 }
 
-// isIDField checks if the field is "_id" (after potential conversion).
+// isIDField checks if the field ends with "_id" (after potential conversion).
 func (f *MongoFormatter) isIDField(field string) bool {
-	return field == "_id" || strings.HasSuffix(field, "._id")
-}
-
-// validateIDFieldValue validates that the value is a plain string suitable for ObjectID conversion.
-// Returns error if the value contains unsupported patterns (regex, wildcard, range, comparison).
-func (f *MongoFormatter) validateIDFieldValue(valueStr string) error {
-	// Check for regex pattern
-	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
-		return errors.New("_id field does not support regex patterns")
-	}
-
-	// Check for wildcard pattern
-	if strings.Contains(valueStr, "*") {
-		return errors.New("_id field does not support wildcard patterns")
-	}
-
-	// Check for range pattern
-	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
-		return errors.New("_id field does not support range queries")
-	}
-
-	// Check for comparison operators
-	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") ||
-		strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
-		return errors.New("_id field does not support comparison operators")
-	}
-
-	return nil
+	return strings.HasSuffix(field, "_id")
 }
 
 // convertToObjectID converts a string value to primitive.ObjectID.
+// Only attempts conversion if the value matches the 24-character hex pattern.
+// Returns NilObjectID if the value doesn't match the pattern or conversion fails.
 func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectID, error) {
 	var hexStr string
 
@@ -131,10 +106,28 @@ func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectI
 	case string:
 		hexStr = v
 	default:
-		return primitive.NilObjectID, fmt.Errorf("cannot convert %T to ObjectID, expected string", value)
+		return primitive.NilObjectID, nil
 	}
 
-	return primitive.ObjectIDFromHex(hexStr)
+	// Check if the string matches the 24-character hex pattern
+	if len(hexStr) != 24 {
+		return primitive.NilObjectID, nil
+	}
+
+	// Validate that all characters are valid hex
+	for _, c := range hexStr {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return primitive.NilObjectID, nil
+		}
+	}
+
+	// Attempt conversion - if it fails, return NilObjectID instead of error
+	objectID, err := primitive.ObjectIDFromHex(hexStr)
+	if err != nil {
+		return primitive.NilObjectID, nil
+	}
+
+	return objectID, nil
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
@@ -626,13 +619,6 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 	// Convert field name if enabled (id -> _id)
 	convertedField := f.convertFieldName(fv.Field)
 
-	// Validate _id field restrictions if this is an _id field
-	if f.isIDField(convertedField) && f.autoConvertIDToObjectID {
-		if err := f.validateIDFieldValue(valueStr); err != nil {
-			return bson.M{}, fmt.Errorf("_id field validation failed: %w", err)
-		}
-	}
-
 	value, err := f.parseValue(valueStr)
 	if err != nil {
 		value = valueStr
@@ -644,13 +630,16 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 		if strValue, ok := value.(string); ok {
 			objectID, err := f.convertToObjectID(strValue)
 			if err != nil {
-				return bson.M{}, fmt.Errorf("failed to convert _id value to ObjectID: %w", err)
+				// This should not happen with the new implementation, but handle gracefully
+				return bson.M{}, err
 			}
-			value = objectID
-		} else {
-			// If value was parsed into something else (shouldn't happen after validation), error
-			return bson.M{}, fmt.Errorf("_id field must be a plain string value, got %T", value)
+			// If conversion succeeded (non-NilObjectID), use the ObjectID
+			if objectID != primitive.NilObjectID {
+				value = objectID
+			}
+			// If objectID is NilObjectID, keep the original string value (fallback)
 		}
+		// If value was parsed into something else, keep it as-is (allow regex, wildcards, etc.)
 	}
 
 	return bson.M{convertedField: value}, nil
