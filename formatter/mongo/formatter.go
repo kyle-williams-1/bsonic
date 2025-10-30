@@ -4,6 +4,7 @@ package mongo
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -110,15 +111,9 @@ func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectI
 	}
 
 	// Check if the string matches the 24-character hex pattern
-	if len(hexStr) != 24 {
+	matched, _ := regexp.MatchString(`^[0-9a-fA-F]{24}$`, hexStr)
+	if !matched {
 		return primitive.NilObjectID, nil
-	}
-
-	// Validate that all characters are valid hex
-	for _, c := range hexStr {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return primitive.NilObjectID, nil
-		}
 	}
 
 	// Attempt conversion - if it fails, return NilObjectID instead of error

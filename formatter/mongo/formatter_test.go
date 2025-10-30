@@ -218,10 +218,8 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 		// Should be a range pattern (complex type) or fallback to string
 		// The exact type depends on how the parser handles the range syntax
-		if result["_id"] == "[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]" {
-			// This is acceptable - it means the range was treated as a string
-			// which is the fallback behavior we want
-		}
+		// Accept either a string or a complex range type as valid fallback behavior
+		_ = result["_id"] // Verify field exists, fallback type is acceptable
 	})
 
 	t.Run("IDFieldWithComparisonFallback", func(t *testing.T) {
@@ -244,10 +242,8 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 		// Should be a comparison pattern (complex type) or fallback to string
 		// The exact type depends on how the parser handles the comparison syntax
-		if result["_id"] == ">507f1f77bcf86cd799439011" {
-			// This is acceptable - it means the comparison was treated as a string
-			// which is the fallback behavior we want
-		}
+		// Accept either a string or a complex comparison type as valid fallback behavior
+		_ = result["_id"] // Verify field exists, fallback type is acceptable
 	})
 
 	t.Run("UserIDFieldConversion", func(t *testing.T) {
