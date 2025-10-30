@@ -125,6 +125,22 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}
+
+		// Test fallback for non-hex string
+		query2, err := parser.Parse("id:mystring")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was converted from "id" to "_id"
+		if _, exists := query2["_id"]; !exists {
+			t.Fatalf("Expected '_id' field, got: %+v", query2)
+		}
+
+		// Should fallback to string search
+		if query2["_id"] != "mystring" {
+			t.Fatalf("Expected string fallback, got: %+v", query2["_id"])
+		}
 	})
 
 	// Test nested ID field conversion
@@ -149,6 +165,82 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
+		}
+
+		// Test fallback for invalid ObjectID
+		query2, err := parser.Parse("user.id:invalid")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that nested field name was converted from "user.id" to "user._id"
+		if _, exists := query2["user._id"]; !exists {
+			t.Fatalf("Expected 'user._id' field, got: %+v", query2)
+		}
+
+		// Should fallback to string search
+		if query2["user._id"] != "invalid" {
+			t.Fatalf("Expected string fallback, got: %+v", query2["user._id"])
+		}
+	})
+
+	// Test user_id field conversion
+	t.Run("UserIDFieldConversion", func(t *testing.T) {
+		query, err := parser.Parse("user_id:507f1f77bcf86cd799439011")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "user_id"
+		if _, exists := query["user_id"]; !exists {
+			t.Fatalf("Expected 'user_id' field, got: %+v", query)
+		}
+
+		// Check that value is ObjectID
+		objectID, ok := query["user_id"].(primitive.ObjectID)
+		if !ok {
+			t.Fatalf("Expected ObjectID, got %T: %+v", query["user_id"], query["user_id"])
+		}
+
+		// Verify it's the correct ObjectID
+		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		if objectID != expectedObjectID {
+			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
+		}
+
+		// Test fallback for non-hex string
+		query2, err := parser.Parse("user_id:invalid")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "user_id"
+		if _, exists := query2["user_id"]; !exists {
+			t.Fatalf("Expected 'user_id' field, got: %+v", query2)
+		}
+
+		// Should fallback to string search
+		if query2["user_id"] != "invalid" {
+			t.Fatalf("Expected string fallback, got: %+v", query2["user_id"])
+		}
+	})
+
+	// Test order_id field fallback
+	t.Run("OrderIDFieldFallback", func(t *testing.T) {
+		query, err := parser.Parse("order_id:12345")
+		if err != nil {
+			t.Fatalf("Parse should not return error, got: %v", err)
+		}
+
+		// Check that field name was preserved as "order_id"
+		if _, exists := query["order_id"]; !exists {
+			t.Fatalf("Expected 'order_id' field, got: %+v", query)
+		}
+
+		// Should fallback to string search (not 24 chars)
+		// The value should be parsed as a number since it's numeric
+		if query["order_id"] != 12345.0 && query["order_id"] != "12345" {
+			t.Fatalf("Expected numeric or string fallback, got: %+v", query["order_id"])
 		}
 	})
 

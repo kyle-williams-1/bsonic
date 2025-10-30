@@ -4,6 +4,7 @@ package mongo
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -44,11 +45,7 @@ func (f *MongoFormatter) Format(ast interface{}) (bson.M, error) {
 	if participleQuery.Expression == nil {
 		return bson.M{}, nil
 	}
-	result, err := f.expressionToBSON(participleQuery.Expression, nil)
-	if err != nil {
-		return bson.M{}, err
-	}
-	return result, nil
+	return f.expressionToBSON(participleQuery.Expression, nil)
 }
 
 // Format converts a parsed query AST into a BSON document.
@@ -64,11 +61,7 @@ func (f *MongoFormatter) FormatWithDefaults(ast interface{}, defaultFields []str
 	if participleQuery.Expression == nil {
 		return bson.M{}, nil
 	}
-	result, err := f.expressionToBSON(participleQuery.Expression, defaultFields)
-	if err != nil {
-		return bson.M{}, err
-	}
-	return result, nil
+	return f.expressionToBSON(participleQuery.Expression, defaultFields)
 }
 
 // convertFieldName converts field name from "id" to "_id" if enabled.
@@ -91,39 +84,14 @@ func (f *MongoFormatter) convertFieldName(field string) string {
 	return field
 }
 
-// isIDField checks if the field is "_id" (after potential conversion).
+// isIDField checks if the field ends with "_id" (after potential conversion).
 func (f *MongoFormatter) isIDField(field string) bool {
-	return field == "_id" || strings.HasSuffix(field, "._id")
-}
-
-// validateIDFieldValue validates that the value is a plain string suitable for ObjectID conversion.
-// Returns error if the value contains unsupported patterns (regex, wildcard, range, comparison).
-func (f *MongoFormatter) validateIDFieldValue(valueStr string) error {
-	// Check for regex pattern
-	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
-		return errors.New("_id field does not support regex patterns")
-	}
-
-	// Check for wildcard pattern
-	if strings.Contains(valueStr, "*") {
-		return errors.New("_id field does not support wildcard patterns")
-	}
-
-	// Check for range pattern
-	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
-		return errors.New("_id field does not support range queries")
-	}
-
-	// Check for comparison operators
-	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") ||
-		strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
-		return errors.New("_id field does not support comparison operators")
-	}
-
-	return nil
+	return strings.HasSuffix(field, "_id")
 }
 
 // convertToObjectID converts a string value to primitive.ObjectID.
+// Only attempts conversion if the value matches the 24-character hex pattern.
+// Returns NilObjectID if the value doesn't match the pattern or conversion fails.
 func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectID, error) {
 	var hexStr string
 
@@ -131,93 +99,62 @@ func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectI
 	case string:
 		hexStr = v
 	default:
-		return primitive.NilObjectID, fmt.Errorf("cannot convert %T to ObjectID, expected string", value)
+		return primitive.NilObjectID, nil
 	}
 
-	return primitive.ObjectIDFromHex(hexStr)
+	// Check if the string matches the 24-character hex pattern
+	matched, _ := regexp.MatchString(`^[0-9a-fA-F]{24}$`, hexStr)
+	if !matched {
+		return primitive.NilObjectID, nil
+	}
+
+	// Attempt conversion - if it fails, return NilObjectID instead of error
+	objectID, err := primitive.ObjectIDFromHex(hexStr)
+	if err != nil {
+		return primitive.NilObjectID, nil
+	}
+
+	return objectID, nil
 }
 
 // parseValue parses a value string, handling wildcards, dates, and special syntax
 func (f *MongoFormatter) parseValue(valueStr string) (interface{}, error) {
-	// Create a chain of value parsers
-	parsers := []func(string) (interface{}, error, bool){
-		f.tryParseRange,
-		f.tryParseComparison,
-		f.tryParseRegex,
-		f.tryParseWildcard,
-		f.tryParseDate,
-		f.tryParseNumber,
-		f.tryParseBoolean,
-	}
-
-	for _, parser := range parsers {
-		if result, err, handled := parser(valueStr); handled {
-			return result, err
-		}
-	}
-
-	// Default: return as string
-	return valueStr, nil
-}
-
-// tryParseRange attempts to parse a range value
-func (f *MongoFormatter) tryParseRange(valueStr string) (interface{}, error, bool) {
+	// Check for range syntax
 	if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") && strings.Contains(strings.ToUpper(valueStr), " TO ") {
-		result, err := f.parseRange(valueStr)
-		return result, err, true
+		return f.parseRange(valueStr)
 	}
-	return nil, nil, false
-}
 
-// tryParseComparison attempts to parse a comparison value
-func (f *MongoFormatter) tryParseComparison(valueStr string) (interface{}, error, bool) {
+	// Check for comparison operators
 	if strings.HasPrefix(valueStr, ">=") || strings.HasPrefix(valueStr, "<=") || strings.HasPrefix(valueStr, ">") || strings.HasPrefix(valueStr, "<") {
-		result, err := f.parseComparison(valueStr)
-		return result, err, true
+		return f.parseComparison(valueStr)
 	}
-	return nil, nil, false
-}
 
-// tryParseWildcard attempts to parse a wildcard value
-func (f *MongoFormatter) tryParseWildcard(valueStr string) (interface{}, error, bool) {
-	if strings.Contains(valueStr, "*") {
-		result, err := f.parseWildcard(valueStr)
-		return result, err, true
-	}
-	return nil, nil, false
-}
-
-// tryParseRegex attempts to parse a regex value
-func (f *MongoFormatter) tryParseRegex(valueStr string) (interface{}, error, bool) {
+	// Check for regex pattern
 	if strings.HasPrefix(valueStr, "/") && strings.HasSuffix(valueStr, "/") && len(valueStr) > 2 {
-		result, err := f.parseRegex(valueStr)
-		return result, err, true
+		return f.parseRegex(valueStr)
 	}
-	return nil, nil, false
-}
 
-// tryParseDate attempts to parse a date value
-func (f *MongoFormatter) tryParseDate(valueStr string) (interface{}, error, bool) {
+	// Check for wildcard pattern
+	if strings.Contains(valueStr, "*") {
+		return f.parseWildcard(valueStr)
+	}
+
+	// Check for date
 	if date, err := f.parseDate(valueStr); err == nil {
-		return date, nil, true
+		return date, nil
 	}
-	return nil, nil, false
-}
 
-// tryParseNumber attempts to parse a number value
-func (f *MongoFormatter) tryParseNumber(valueStr string) (interface{}, error, bool) {
+	// Check for number
 	if num, err := strconv.ParseFloat(valueStr, 64); err == nil {
-		return num, nil, true
+		return num, nil
 	}
-	return nil, nil, false
-}
 
-// tryParseBoolean attempts to parse a boolean value
-func (f *MongoFormatter) tryParseBoolean(valueStr string) (interface{}, error, bool) {
+	// Check for boolean
 	if valueStr == "true" || valueStr == "false" {
-		return valueStr == "true", nil, true
+		return valueStr == "true", nil
 	}
-	return nil, nil, false
+
+	return valueStr, nil
 }
 
 // parseRange parses range queries like [start TO end] for both dates and numbers
@@ -559,7 +496,6 @@ func (f *MongoFormatter) operandToBSON(operand *lucene.ParticipleOperand, defaul
 // operandToBSONWithContext converts operands to BSON with negation context
 func (f *MongoFormatter) operandToBSONWithContext(operand *lucene.ParticipleOperand, defaultFields []string, inNotContext bool) (bson.M, error) {
 	if operand.Not != nil {
-		// Handle NOT operation
 		childBSON, err := f.operandToBSONWithContext(operand.Not, defaultFields, true)
 		if err != nil {
 			return bson.M{}, err
@@ -626,13 +562,6 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 	// Convert field name if enabled (id -> _id)
 	convertedField := f.convertFieldName(fv.Field)
 
-	// Validate _id field restrictions if this is an _id field
-	if f.isIDField(convertedField) && f.autoConvertIDToObjectID {
-		if err := f.validateIDFieldValue(valueStr); err != nil {
-			return bson.M{}, fmt.Errorf("_id field validation failed: %w", err)
-		}
-	}
-
 	value, err := f.parseValue(valueStr)
 	if err != nil {
 		value = valueStr
@@ -644,13 +573,16 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 		if strValue, ok := value.(string); ok {
 			objectID, err := f.convertToObjectID(strValue)
 			if err != nil {
-				return bson.M{}, fmt.Errorf("failed to convert _id value to ObjectID: %w", err)
+				// This should not happen with the new implementation, but handle gracefully
+				return bson.M{}, err
 			}
-			value = objectID
-		} else {
-			// If value was parsed into something else (shouldn't happen after validation), error
-			return bson.M{}, fmt.Errorf("_id field must be a plain string value, got %T", value)
+			// If conversion succeeded (non-NilObjectID), use the ObjectID
+			if objectID != primitive.NilObjectID {
+				value = objectID
+			}
+			// If objectID is NilObjectID, keep the original string value (fallback)
 		}
+		// If value was parsed into something else, keep it as-is (allow regex, wildcards, etc.)
 	}
 
 	return bson.M{convertedField: value}, nil
@@ -762,12 +694,9 @@ func (f *MongoFormatter) isSimpleFieldValue(condition bson.M) bool {
 		return false
 	}
 
-	// Check if the condition itself has complex operators
 	if f.hasComplexOperators(condition) {
 		return false
 	}
-
-	// Check if any field value contains complex operators
 	return !f.hasComplexFieldValues(condition)
 }
 
@@ -873,7 +802,6 @@ func (f *MongoFormatter) createFieldRegexSearch(field, valueStr string) bson.M {
 
 // parseValueToRegex parses a value string and returns a regex BSON query
 func (f *MongoFormatter) parseValueToRegex(valueStr string) (bson.M, error) {
-	// Check if the value contains wildcards
 	if strings.Contains(valueStr, "*") {
 		return f.parseWildcard(valueStr)
 	}

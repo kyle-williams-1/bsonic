@@ -274,7 +274,7 @@ query, _ := bsonic.Parse("active:true AND age:25 AND created_at:2023-01-15")
 
 ### ID Field Conversion
 
-Bsonic automatically handles MongoDB's `_id` field conventions with configurable options:
+Bsonic automatically handles MongoDB's `_id` field conventions with intelligent detection and fallback:
 
 ```go
 // ID field conversion (enabled by default)
@@ -285,6 +285,18 @@ query, _ := bsonic.Parse("id:507f1f77bcf86cd799439011")
 query, _ := bsonic.Parse("user.id:507f1f77bcf86cd799439011")
 // BSON: {"user._id": ObjectID("507f1f77bcf86cd799439011")}
 
+// Any field ending with _id is detected
+query, _ := bsonic.Parse("user_id:507f1f77bcf86cd799439011")
+// BSON: {"user_id": ObjectID("507f1f77bcf86cd799439011")}
+
+// Automatic fallback to string search for invalid ObjectIDs
+query, _ := bsonic.Parse("id:invalid-hex")
+// BSON: {"_id": "invalid-hex"}
+
+// Supports all query patterns on ID fields (regex, wildcards, ranges, etc.) when ObjectID not detected
+query, _ := bsonic.Parse("id:/pattern/")
+// BSON: {"_id": {"$regex": "^pattern$"}}
+
 // Disable ID field conversion
 cfg := config.Default().
     WithReplaceIDWithMongoID(false).     // Keep "id" as "id"
@@ -294,11 +306,12 @@ query, _ := parser.Parse("id:507f1f77bcf86cd799439011")
 // BSON: {"id": "507f1f77bcf86cd799439011"}
 ```
 
-**ID Field Restrictions:** When ID field conversion is enabled, `_id` fields only support:
+**ID Field Detection:** Any field ending with `_id` is automatically detected for ObjectID conversion:
 
-- Valid ObjectID hex strings (24 characters)
-- No regex patterns, wildcards, ranges, or comparison operators
-- Strict validation with clear error messages
+- `_id`, `user_id`, `order_id`, `product_id`, `user._id`, etc.
+- Only attempts ObjectID conversion for 24-character hex strings matching `^[0-9a-fA-F]{24}$`
+- Falls back to string search for non-matching values
+- Supports all query patterns (regex, wildcards, ranges, comparisons) on ID fields
 
 **Configuration Options:**
 

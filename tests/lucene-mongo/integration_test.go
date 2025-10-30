@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -152,6 +151,21 @@ func TestBasicQueries(t *testing.T) {
 			name:     "nested id field conversion to _id with ObjectID",
 			query:    "user.id:507f1f77bcf86cd799439011",
 			expected: 0, // No user with this specific ObjectID
+		},
+		{
+			name:     "user_id field with ObjectID",
+			query:    "user_id:507f1f77bcf86cd799439011",
+			expected: 0, // No user with this specific ObjectID
+		},
+		{
+			name:     "order_id field with non-ObjectID string",
+			query:    "order_id:12345",
+			expected: 0, // Should fallback to string search
+		},
+		{
+			name:     "product_id field with short string",
+			query:    "product_id:abc",
+			expected: 0, // Should fallback to string search (not 24 chars)
 		},
 	}
 
@@ -909,32 +923,6 @@ func TestUtilityAndEdgeCases(t *testing.T) {
 		}
 	})
 
-	// Test ID field restrictions
-	t.Run("IDFieldRestrictions", func(t *testing.T) {
-		tests := []struct {
-			query       string
-			desc        string
-			errorSubstr string
-		}{
-			{"id:invalid-hex-string", "invalid ObjectID hex string", "failed to convert _id value to ObjectID"},
-			{"id:/pattern/", "regex pattern on _id field", "_id field does not support regex patterns"},
-			{"id:*pattern*", "wildcard pattern on _id field", "_id field does not support wildcard patterns"},
-			{"id:[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]", "range query on _id field", "_id field does not support range queries"},
-			{"id:>507f1f77bcf86cd799439011", "comparison operator on _id field", "_id field does not support comparison operators"},
-		}
-
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				_, err := parser.Parse(test.query)
-				if err == nil {
-					t.Fatalf("Expected error for '%s', got none", test.query)
-				}
-				if !strings.Contains(err.Error(), test.errorSubstr) {
-					t.Fatalf("Expected error containing '%s', got: %v", test.errorSubstr, err)
-				}
-			})
-		}
-	})
 }
 
 // TestDefaultFieldsIntegration tests default fields functionality with actual MongoDB queries
