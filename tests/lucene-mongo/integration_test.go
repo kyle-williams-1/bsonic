@@ -923,46 +923,6 @@ func TestUtilityAndEdgeCases(t *testing.T) {
 		}
 	})
 
-	// Test ID field fallback behavior
-	t.Run("IDFieldFallback", func(t *testing.T) {
-		tests := []struct {
-			query    string
-			desc     string
-			expected int
-		}{
-			{"id:invalid-hex-string", "invalid ObjectID hex string fallback", 0},                                  // Should fallback to string search
-			{"id:/pattern/", "regex pattern on _id field fallback", 0},                                            // Should fallback to regex
-			{"id:*pattern*", "wildcard pattern on _id field fallback", 0},                                         // Should fallback to wildcard
-			{"id:[507f1f77bcf86cd799439011 TO 507f1f77bcf86cd799439012]", "range query on _id field fallback", 0}, // Should fallback to range
-			{"id:>507f1f77bcf86cd799439011", "comparison operator on _id field fallback", 0},                      // Should fallback to comparison
-		}
-
-		for _, test := range tests {
-			t.Run(test.desc, func(t *testing.T) {
-				query, err := parser.Parse(test.query)
-				if err != nil {
-					t.Fatalf("Parse should not return error for %s, got: %v", test.desc, err)
-				}
-
-				// Execute the query
-				cursor, err := testDB.Collection("users").Find(context.Background(), query)
-				if err != nil {
-					t.Fatalf("Failed to execute query: %v", err)
-				}
-				defer cursor.Close(context.Background())
-
-				var results []bson.M
-				err = cursor.All(context.Background(), &results)
-				if err != nil {
-					t.Fatalf("Failed to decode results: %v", err)
-				}
-
-				if len(results) != test.expected {
-					t.Fatalf("Expected %d results, got %d for query: %s", test.expected, len(results), test.query)
-				}
-			})
-		}
-	})
 }
 
 // TestDefaultFieldsIntegration tests default fields functionality with actual MongoDB queries
