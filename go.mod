@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.4
-	go.mongodb.org/mongo-driver v1.17.4
+	go.mongodb.org/mongo-driver v1.17.6
 )
 
 require (
