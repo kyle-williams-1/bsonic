@@ -84,7 +84,7 @@ Bsonic provides flexible configuration options to customize parser behavior. Use
 - Control ID field conversion behavior
 - Customize language and formatter selection
 
-**Why use configuration?** Default fields enable powerful free-text search without requiring MongoDB text indexes. ID conversion simplifies working with MongoDB's `_id` convention.
+Default fields enable free text search without requiring MongoDB text indexes. ID conversion simplifies working with MongoDB's `_id` convention.
 
 ```go
 import (
@@ -512,7 +512,7 @@ query, _ := bsonic.Parse("(name:jo* OR name:ja*) AND (age:[18 TO 65] OR role:adm
 
 ### Default Fields
 
-Default fields enable free-text search across multiple fields without requiring MongoDB text indexes. Free text searches are case-insensitive by default, unless regex or wildcards are used.
+Default fields enable free text search across multiple fields without requiring MongoDB text indexes. Free text searches are case-insensitive by default, unless regex or wildcards are used.
 
 ```go
 // Multiple default fields
