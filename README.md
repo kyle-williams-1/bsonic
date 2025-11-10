@@ -40,41 +40,57 @@ go get github.com/kyle-williams-1/bsonic
 
 ## Quick Start
 
+Parse Lucene-style queries into MongoDB BSON filters:
+
 ```go
-package main
-
 import (
-    "encoding/json"
-    "fmt"
-    "log"
-
     "github.com/kyle-williams-1/bsonic"
+    "go.mongodb.org/mongo-driver/mongo"
 )
 
-func main() {
-    query, err := bsonic.Parse("name:john AND age:25")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    jsonBytes, _ := json.MarshalIndent(query, "", "  ")
-    fmt.Println(string(jsonBytes))
+// Parse query and use with MongoDB
+query, err := bsonic.Parse("name:john AND age:25")
+if err != nil {
+    log.Fatal(err)
 }
+
+// Use directly with MongoDB Find
+cursor, err := collection.Find(ctx, query)
 ```
 
-**Output:**
-```json
-{
-  "age": 25,
-  "name": "john"
-}
-```
-
-For applications that need to reuse parser instances:
+Common Usage Patterns:
 
 ```go
-parser := bsonic.New()
-query, err := parser.Parse("name:john AND age:25")
+// Wildcard search
+query, _ := bsonic.Parse("name:Jo*")
+
+// Regex patterns
+query, _ := bsonic.Parse("email:/.*@example\\.com/")
+
+// Range queries
+query, _ := bsonic.Parse("age:[18 TO 65]")
+
+// Comparison operators
+query, _ := bsonic.Parse("score:>85")
+query, _ := bsonic.Parse("created_at:>2024-01-01")
+
+// Boolean queries
+query, _ := bsonic.Parse("active:true")
+
+// Logical operators and grouping
+query, _ := bsonic.Parse("(name:john OR name:jane) AND age:25")
+
+// NOT operator
+query, _ := bsonic.Parse("NOT status:inactive")
+
+// Nested fields
+query, _ := bsonic.Parse("user.profile.email:john@example.com")
+
+// Array searches
+query, _ := bsonic.Parse("tags:mongodb")
+
+// ID conversion (id -> _id with ObjectID)
+query, _ := bsonic.Parse("id:507f1f77bcf86cd799439011")
 ```
 
 ## Configuration
