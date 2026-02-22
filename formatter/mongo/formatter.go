@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/kyle-williams-1/bsonic/language/lucene"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // MongoFormatter represents a MongoDB BSON formatter for query results.
@@ -89,29 +88,29 @@ func (f *MongoFormatter) isIDField(field string) bool {
 	return strings.HasSuffix(field, "_id")
 }
 
-// convertToObjectID converts a string value to primitive.ObjectID.
+// convertToObjectID converts a string value to bson.ObjectID.
 // Only attempts conversion if the value matches the 24-character hex pattern.
 // Returns NilObjectID if the value doesn't match the pattern or conversion fails.
-func (f *MongoFormatter) convertToObjectID(value interface{}) (primitive.ObjectID, error) {
+func (f *MongoFormatter) convertToObjectID(value interface{}) (bson.ObjectID, error) {
 	var hexStr string
 
 	switch v := value.(type) {
 	case string:
 		hexStr = v
 	default:
-		return primitive.NilObjectID, nil
+		return bson.NilObjectID, nil
 	}
 
 	// Check if the string matches the 24-character hex pattern
 	matched, _ := regexp.MatchString(`^[0-9a-fA-F]{24}$`, hexStr)
 	if !matched {
-		return primitive.NilObjectID, nil
+		return bson.NilObjectID, nil
 	}
 
 	// Attempt conversion - if it fails, return NilObjectID instead of error
-	objectID, err := primitive.ObjectIDFromHex(hexStr)
+	objectID, err := bson.ObjectIDFromHex(hexStr)
 	if err != nil {
-		return primitive.NilObjectID, nil
+		return bson.NilObjectID, nil
 	}
 
 	return objectID, nil
@@ -577,7 +576,7 @@ func (f *MongoFormatter) fieldValueToBSONWithContext(fv *lucene.ParticipleFieldV
 				return bson.M{}, err
 			}
 			// If conversion succeeded (non-NilObjectID), use the ObjectID
-			if objectID != primitive.NilObjectID {
+			if objectID != bson.NilObjectID {
 				value = objectID
 			}
 			// If objectID is NilObjectID, keep the original string value (fallback)

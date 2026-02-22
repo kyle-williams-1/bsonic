@@ -7,8 +7,7 @@ import (
 
 	"github.com/kyle-williams-1/bsonic"
 	bsonic_config "github.com/kyle-williams-1/bsonic/config"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // createParserWithDefaults creates a parser with default fields for testing
@@ -115,13 +114,13 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		}
 
 		// Check that value is ObjectID
-		objectID, ok := query["_id"].(primitive.ObjectID)
+		objectID, ok := query["_id"].(bson.ObjectID)
 		if !ok {
 			t.Fatalf("Expected ObjectID, got %T: %+v", query["_id"], query["_id"])
 		}
 
 		// Verify it's the correct ObjectID
-		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		expectedObjectID, _ := bson.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}
@@ -156,13 +155,13 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		}
 
 		// Check that value is ObjectID
-		objectID, ok := query["user._id"].(primitive.ObjectID)
+		objectID, ok := query["user._id"].(bson.ObjectID)
 		if !ok {
 			t.Fatalf("Expected ObjectID, got %T: %+v", query["user._id"], query["user._id"])
 		}
 
 		// Verify it's the correct ObjectID
-		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		expectedObjectID, _ := bson.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}
@@ -197,13 +196,13 @@ func TestLuceneMongoBasicParsing(t *testing.T) {
 		}
 
 		// Check that value is ObjectID
-		objectID, ok := query["user_id"].(primitive.ObjectID)
+		objectID, ok := query["user_id"].(bson.ObjectID)
 		if !ok {
 			t.Fatalf("Expected ObjectID, got %T: %+v", query["user_id"], query["user_id"])
 		}
 
 		// Verify it's the correct ObjectID
-		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		expectedObjectID, _ := bson.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}

@@ -8,8 +8,7 @@ import (
 	"github.com/kyle-williams-1/bsonic"
 	"github.com/kyle-williams-1/bsonic/formatter/mongo"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // TestLuceneMongoFormatterMethods tests MongoFormatter methods
@@ -66,13 +65,13 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 
 		// Check that value is ObjectID
-		objectID, ok := result["_id"].(primitive.ObjectID)
+		objectID, ok := result["_id"].(bson.ObjectID)
 		if !ok {
 			t.Fatalf("Expected ObjectID, got %T: %+v", result["_id"], result["_id"])
 		}
 
 		// Verify it's the correct ObjectID
-		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		expectedObjectID, _ := bson.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}
@@ -266,13 +265,13 @@ func TestIDFieldConversion(t *testing.T) {
 		}
 
 		// Check that value is ObjectID
-		objectID, ok := result["user_id"].(primitive.ObjectID)
+		objectID, ok := result["user_id"].(bson.ObjectID)
 		if !ok {
 			t.Fatalf("Expected ObjectID, got %T: %+v", result["user_id"], result["user_id"])
 		}
 
 		// Verify it's the correct ObjectID
-		expectedObjectID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
+		expectedObjectID, _ := bson.ObjectIDFromHex("507f1f77bcf86cd799439011")
 		if objectID != expectedObjectID {
 			t.Fatalf("Expected ObjectID %v, got %v", expectedObjectID, objectID)
 		}

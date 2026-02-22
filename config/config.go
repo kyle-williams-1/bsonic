@@ -61,7 +61,7 @@ func (c *Config) WithReplaceIDWithMongoID(enabled bool) *Config {
 	return c
 }
 
-// WithAutoConvertIDToObjectID sets whether to automatically convert string values to primitive.ObjectID for "_id" fields and returns the config.
+// WithAutoConvertIDToObjectID sets whether to automatically convert string values to bson.ObjectID for "_id" fields and returns the config.
 func (c *Config) WithAutoConvertIDToObjectID(enabled bool) *Config {
 	c.AutoConvertIDToObjectID = enabled
 	return c
