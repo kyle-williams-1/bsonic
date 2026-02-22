@@ -45,7 +45,7 @@ Parse Lucene-style queries into MongoDB BSON filters:
 ```go
 import (
     "github.com/kyle-williams-1/bsonic"
-    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Parse query and use with MongoDB

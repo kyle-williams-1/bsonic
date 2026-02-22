@@ -9,7 +9,7 @@ Required dependencies for the BSON library and integration tests.
 - **Installation**: [Download from golang.org](https://golang.org/dl/)
 
 ### MongoDB Go Driver
-- **Package**: `go.mongodb.org/mongo-driver`
+- **Package**: `go.mongodb.org/mongo-driver/v2`
 - **Version**: v1.17.4 (defined in go.mod)
 - **Installation**: Automatically installed with `go mod download`
 

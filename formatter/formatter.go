@@ -1,7 +1,7 @@
 // Package formatter provides interfaces for query result formatters.
 package formatter
 
-import "go.mongodb.org/mongo-driver/bson"
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 // Formatter represents a query result formatter for a specific output type.
 type Formatter[T any] interface {

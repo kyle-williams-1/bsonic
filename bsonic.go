@@ -10,7 +10,7 @@ import (
 	"github.com/kyle-williams-1/bsonic/formatter/mongo"
 	"github.com/kyle-williams-1/bsonic/language"
 	"github.com/kyle-williams-1/bsonic/language/lucene"
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // Parser represents a query parser for the selected language and MongoDB formatter.

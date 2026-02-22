@@ -249,7 +249,7 @@ BSONIC supports different BSON implementations for various document databases:
 **MongoDB BSON (Default):**
 ```go
 // formatter/mongo/formatter.go - Current MongoDB implementation
-// Uses go.mongodb.org/mongo-driver/bson
+// Uses go.mongodb.org/mongo-driver/v2/bson
 // Supports MongoDB-specific operators: $text, $regex, $gte, $lte, etc.
 ```
 

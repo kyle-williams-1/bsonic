@@ -4,7 +4,7 @@ package lucene_mongo_test
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // CompareBSONValues compares BSON values for testing
