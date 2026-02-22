@@ -5,7 +5,7 @@ Required dependencies for the BSON library and integration tests.
 ## Required Dependencies
 
 ### Go
-- **Version**: Go 1.25 or later
+- **Version**: Go 1.26 or later
 - **Installation**: [Download from golang.org](https://golang.org/dl/)
 
 ### MongoDB Go Driver

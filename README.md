@@ -13,7 +13,7 @@
 [![codecov](https://codecov.io/gh/kyle-williams-1/bsonic/branch/main/graph/badge.svg)](https://codecov.io/gh/kyle-williams-1/bsonic)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kyle-williams-1/bsonic)](https://goreportcard.com/report/github.com/kyle-williams-1/bsonic)
 [![Code scanning alerts](https://github.com/kyle-williams-1/bsonic/workflows/CodeQL/badge.svg)](https://github.com/kyle-williams-1/bsonic/security/code-scanning)
-[![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kyle-williams-1/bsonic.svg)](https://pkg.go.dev/github.com/kyle-williams-1/bsonic)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -685,7 +685,7 @@ func handleRequest(queryStr string) (bson.M, error) {
 
 Contributions welcome! See [DEPENDENCIES.md](DEPENDENCIES.md) for development setup.
 
-**Requirements:** Go 1.25+, golangci-lint, Docker (for integration tests)
+**Requirements:** Go 1.26+, golangci-lint, Docker (for integration tests)
 
 ## License
 
